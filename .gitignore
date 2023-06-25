@@ -6,4 +6,5 @@ __pycache__/
 /prediction/
 /plots/
 /snippets.pdf
+.DS_Store
 
