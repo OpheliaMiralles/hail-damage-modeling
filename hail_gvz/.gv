@@ -1,0 +1,33 @@
+digraph {
+	subgraph "clusterpoint (4546)" {
+		pot [label="pot
+~
+DensityDist_pot" shape=ellipse style=filled]
+		grid_idx [label="grid_idx
+~
+ConstantData" shape=box style="rounded, filled"]
+		label="point (4546)" labeljust=r labelloc=b style=rounded
+	}
+	subgraph "clustergrid (177) x feature (2)" {
+		grid_lonlat_mapping [label="grid_lonlat_mapping
+~
+ConstantData" shape=box style="rounded, filled"]
+		label="grid (177) x feature (2)" labeljust=r labelloc=b style=rounded
+	}
+	shape [label="shape
+~
+Uniform" shape=ellipse]
+	subgraph "clustergridcells (177)" {
+		scale [label="scale
+~
+Uniform" shape=ellipse]
+		loc [label="loc
+~
+Uniform" shape=ellipse]
+		label="gridcells (177)" labeljust=r labelloc=b style=rounded
+	}
+	scale -> pot
+	loc -> pot
+	shape -> pot
+	grid_idx -> pot
+}
