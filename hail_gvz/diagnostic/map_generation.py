@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from data.hailcount_data_processing import get_exposure, get_grid_mapping, get_train_data, get_test_data, get_validation_data
-from prediction import generate_prediction_for_date, get_pred_counts_for_day
+from data.hailcount_data_processing import get_exposure, get_grid_mapping
+from prediction import generate_prediction_for_date
 
 matplotlib.rcParams["text.usetex"] = True
 params = {'legend.fontsize': 'x-large',

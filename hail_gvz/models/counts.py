@@ -1,22 +1,19 @@
-import datetime
 import pathlib
 
 import aesara.tensor as at
 import arviz as az
 import geopandas
-import geoplot
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pymc as mc
 from pymc import Uniform
 from shapely.geometry import Point
 
-from data.hailcount_data_processing import get_train_data, get_grid_mapping, get_exposure, delta, timestep
-from pymc_utils.pymc_distributions import sigmoid, Matern32Chordal, binom_counts_alphamu, poisson_counts
+from data.hailcount_data_processing import delta, timestep
+from pymc_utils.pymc_distributions import sigmoid, Matern32Chordal, binom_counts_alphamu
 
-PRED_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/prediction/')
-FITS_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/fits/')
+PRED_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/prediction/')
+FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits/')
 tol = 1e-5
 scaling_factor = 1e2
 pow_climada = 3
@@ -24,7 +21,7 @@ origin = (8.36278492095831, 47.163852336888695)
 timestep_days = pd.to_timedelta(timestep).days
 area = delta ** 2
 previous = '20230326_09:51'
-PLOT_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/plots/')
+PLOT_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/plots/')
 trace_previous = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_counts' / previous).with_suffix('.nc')))
 
 
@@ -186,26 +183,3 @@ def fit_marginal_model_for_claim_count(data, mapping, exposure):
         trace = mc.sample(200, tune=100, chains=1, init='adapt_diag',
                           progressbar=True)
     return trace
-
-
-if __name__ == '__main__':
-    train_data = get_train_data(suffix='GVZ_emanuel')
-    name_mod = datetime.datetime.now().strftime('%Y%m%d_%H:%M')
-    mapping = get_grid_mapping(suffix='GVZ_emanuel_all')
-    exposure = get_exposure()
-    trace = fit_marginal_model_for_claim_count(train_data, mapping, exposure)
-    f = trace.posterior.eps_scale.mean('draw').to_dataframe().reset_index()
-    f = f.rename(columns={'grid': 'gridcell'}).merge(mapping.drop_duplicates(subset='gridcell')[['geometry', 'gridcell']], on='gridcell', how='left')
-    f = f.set_geometry('geometry')
-    geoplot.choropleth(f, hue='eps_scale', legend=True)
-    path_plots = PLOT_ROOT / name_mod
-    path_plots.mkdir(parents=True, exist_ok=True)
-    plt.savefig(path_plots / 'eps.png', DPI=200)
-    plt.show()
-    plt.clf()
-
-    trace.log_likelihood.counts.plot()
-    plt.savefig(path_plots / 'll.png', DPI=200)
-    plt.show()
-    path = str(pathlib.Path(FITS_ROOT / 'claim_counts' / name_mod).with_suffix('.nc'))
-    ndf = trace.to_netcdf(path)

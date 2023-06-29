@@ -16,13 +16,12 @@ from shapely.geometry import MultiPoint, MultiPolygon
 from shapely.geometry import Polygon
 from shapely.ops import triangulate
 import xarray as xr
-from climada.entity import Exposures
 
 warnings.filterwarnings('ignore')
-PLOT_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/plots/')
-DATA_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-MESHS = xr.open_mfdataset(glob.glob('/Users/Boubou/Documents/GitHub/hail_gvz/data/MZC/*.nc'), coords='minimal')
-POH = xr.open_mfdataset(glob.glob('/Users/Boubou/Documents/GitHub/hail_gvz/data/BZC/*.nc'), coords='minimal')
+PLOT_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/plots/')
+DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
+MESHS = xr.open_mfdataset(glob.glob('/Volumes/ExtremeSSD/hail_gvz/data/MZC/*.nc'), coords='minimal')
+POH = xr.open_mfdataset(glob.glob('/Volumes/ExtremeSSD/hail_gvz/data/BZC/*.nc'), coords='minimal')
 EXPOSURES_ROOT = pathlib.Path(DATA_ROOT / 'GVZ_Exposure_202201').with_suffix('.csv')
 HAILSTORM_ROOT_UNPROCESSED = pathlib.Path(DATA_ROOT / 'GVZ_Hail_Loss_200001_to_202203').with_suffix('.csv')
 HAILSTORM_ROOT_PROCESSED = pathlib.Path(DATA_ROOT / 'GVZ_Hail_Loss_date_corrected7').with_suffix('.csv')
@@ -102,18 +101,6 @@ def process_haildamage_data(concat_unprocessed=False):
     gdf.to_crs(epsg=4326, inplace=True)
     gdf = gdf.assign(longitude=lambda x: x.geometry.x).assign(latitude=lambda x: x.geometry.y)
     return gdf
-
-
-def get_climada_exposure(log=True):
-    df_exp = process_exposure_data()
-    geodata_exp = df_exp[['longitude', 'latitude', 'value']]
-    if log:
-        geodata_exp['value'] = np.log(geodata_exp['value'])
-    gdf_exp = geopandas.GeoDataFrame(
-        geodata_exp, geometry=geopandas.points_from_xy(geodata_exp.longitude, geodata_exp.latitude), crs=CRS)
-    gdf_exp.value = gdf_exp.value.astype(float)
-    exp = Exposures(data=gdf_exp, value_unit='CHF')
-    return exp
 
 
 def distance_from_lonlat(lon1, lat1, lon2, lat2):

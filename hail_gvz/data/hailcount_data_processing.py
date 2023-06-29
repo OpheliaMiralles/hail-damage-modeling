@@ -7,9 +7,9 @@ import xarray as xr
 
 from exploratory_da.utils import process_data_with_modelled_formatting, grid_from_geopandas_pointcloud, process_exposure_data
 
-DATA_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/Ophelia')
+DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/Ophelia')
 
-FITS_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/fits/')
+FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits/')
 scaling_factor = 1
 tol = 1e-5
 CRS = 'EPSG:2056'

@@ -40,7 +40,6 @@ def spatially_convolved_ks_stat(real_output, fake_output, patch_size=3):
                                               padding='VALID')
             ks_stat_for_time_step = ks_stat_on_patch(patch1, patch2)
             to_concat.append(ks_stat_for_time_step)
-            #to_concat.append(tf.reduce_mean(ks_stat_for_time_step, axis=(1, 2)))
             i+=1
     mean_ks_stat_img = tf.reduce_mean(to_concat, axis=(0, 1))
     return mean_ks_stat_img

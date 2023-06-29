@@ -9,8 +9,8 @@ from exploratory_da.utils import grid_from_geopandas_pointcloud, associate_claim
     process_exposure_data, associate_exposure_data_with_grid
 
 plt.rcParams["figure.constrained_layout.use"] = True
-DATA_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-FITS_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/fits/')
+DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
+FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits')
 scaling_factor = 1
 tol = 1e-5
 

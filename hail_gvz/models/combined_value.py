@@ -9,12 +9,13 @@ import xarray as xr
 from pymc import Uniform
 
 from pykelihood.distributions import GPD
-from pymc_utils.pymc_distributions import Matern32Chordal, RatQuadChordal, sigmoid, beta_distri_unobserved, combined_beta_gpd, gpd_without_loc_unobserved, bernoulli_distri, combined_bern_beta_gpd, \
+from pymc_utils.pymc_distributions import Matern32Chordal, RatQuadChordal, sigmoid, beta_distri_unobserved, \
+    combined_beta_gpd, gpd_without_loc_unobserved, bernoulli_distri, combined_bern_beta_gpd, \
     bernoulli_distri_unobserved
 from threshold_selection import threshold_selection_GoF
 
-DATA_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-FITS_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/fits/')
+DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
+FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits')
 scaling_factor = 100
 tol = 1e-3
 threshold = 8.06
@@ -64,7 +65,8 @@ def initialize_model(data):
         mc.ConstantData("lonlat_mapping", X, dims=("grid", "feature"))
         # covariates
         mc.ConstantData('unscaled_exposure', data.exposure, dims='point')
-        mc.ConstantData('exposure', (np.log(data.exposure) - np.log(data.exposure).min()) / (np.log(data.exposure).max() - np.log(data.exposure).min()), dims='point')
+        mc.ConstantData('exposure', (np.log(data.exposure) - np.log(data.exposure).min()) / (
+                    np.log(data.exposure).max() - np.log(data.exposure).min()), dims='point')
         mc.ConstantData('meshs', data.MESHS / scaling_factor, dims='point')
         mc.ConstantData('poh', data.POH / scaling_factor, dims='point')
     return model
@@ -78,20 +80,27 @@ def beta_model(model):
     _exp = model.exposure
     with model:
         # alpha
-        constant_mu = Uniform(f"constant_mu", lower=0., upper=10, initval=trace_beta_solo.posterior.constant_mu.mean(['chain', 'draw']))
-        sigma_grid = Uniform("sigma_grid", lower=0., upper=2, initval=trace_beta_solo.posterior.sigma_grid.mean(['chain', 'draw']))
-        ls = mc.Gamma("length_scale_sigma", mu=5, sigma=2., initval=trace_beta_solo.posterior.length_scale_sigma.mean(['chain', 'draw']))
+        constant_mu = Uniform(f"constant_mu", lower=0., upper=10,
+                              initval=trace_beta_solo.posterior.constant_mu.mean(['chain', 'draw']))
+        sigma_grid = Uniform("sigma_grid", lower=0., upper=2,
+                             initval=trace_beta_solo.posterior.sigma_grid.mean(['chain', 'draw']))
+        ls = mc.Gamma("length_scale_sigma", mu=5, sigma=2.,
+                      initval=trace_beta_solo.posterior.length_scale_sigma.mean(['chain', 'draw']))
         latent = mc.gp.Latent(cov_func=RatQuadChordal(2, ls), )
-        eps = latent.prior("eps_grid", _X, dims="grid", jitter=1e-6, initval=trace_beta_solo.posterior.eps_grid.mean(['chain', 'draw']))  # corr inter-cells
-        gridwise_mu = Uniform(f"grid_scale", lower=-10, upper=10, dims='grid', initval=trace_beta_solo.posterior.grid_scale.mean(['chain', 'draw']))
+        eps = latent.prior("eps_grid", _X, dims="grid", jitter=1e-6,
+                           initval=trace_beta_solo.posterior.eps_grid.mean(['chain', 'draw']))  # corr inter-cells
+        gridwise_mu = Uniform(f"grid_scale", lower=-10, upper=10, dims='grid',
+                              initval=trace_beta_solo.posterior.grid_scale.mean(['chain', 'draw']))
         grid_mu = gridwise_mu[_grid] + eps[_grid] * sigma_grid
-        coef_meshs = Uniform("coef_meshs_b", lower=-5., upper=5, initval=trace_beta_solo.posterior.coef_meshs_b.mean(['chain', 'draw']))
-        coef_poh = Uniform("coef_poh_b", lower=-5., upper=5, initval=trace_beta_solo.posterior.coef_poh_b.mean(['chain', 'draw']))
-        coef_exposure = Uniform("coef_exposure_b", lower=-5., upper=5, initval=trace_beta_solo.posterior.coef_exposure.mean(['chain', 'draw']))
-        alpha = constant_mu + grid_mu + coef_poh * _poh + coef_meshs * _meshs + coef_exposure * _exp
+        coef_meshs = Uniform("coef_meshs_b", lower=-5., upper=5,
+                             initval=trace_beta_solo.posterior.coef_meshs_b.mean(['chain', 'draw']))
+        coef_poh = Uniform("coef_poh_b", lower=-5., upper=5,
+                           initval=trace_beta_solo.posterior.coef_poh_b.mean(['chain', 'draw']))
+        alpha = constant_mu + grid_mu + coef_poh * _poh + coef_meshs * _meshs
         mu = sigmoid(alpha)
         # sigma
-        kappa = mc.HalfNormal('precision', sigma=1000, initval=trace_beta_solo.posterior.precision.mean(['chain', 'draw']))  # precision parameter
+        kappa = mc.HalfNormal('precision', sigma=1000, initval=trace_beta_solo.posterior.precision.mean(
+            ['chain', 'draw']))  # precision parameter
         sigma = (mu * (1 - mu) / (kappa + 1)).sqrt()
     return mu, sigma
 
@@ -109,16 +118,22 @@ def gpd_model(model):
         shape = mc.Normal("shape", mu=init_shape, sigma=[0.1, 0.05], dims='season', initval=init_shape)[_season]
         # scale parameter
         constant_scale = Uniform(f"constant_scale", lower=-40, upper=40, initval=-2.0202707317519466)
-        coef_meshs = Uniform("coef_meshs", lower=-5., upper=5, initval=trace_gpd_solo.posterior.coef_meshs.mean(['chain', 'draw']))
-        coef_exposure = Uniform("coef_exposure", lower=-5., upper=5, initval=trace_gpd_solo.posterior.coef_exposure.mean(['chain', 'draw']))
-        coef_crossed = Uniform("coef_crossed", lower=-5., upper=5, initval=trace_gpd_solo.posterior.coef_crossed.mean(['chain', 'draw']))
+        coef_meshs = Uniform("coef_meshs", lower=-5., upper=5,
+                             initval=trace_gpd_solo.posterior.coef_meshs.mean(['chain', 'draw']))
+        coef_exposure = Uniform("coef_exposure", lower=-5., upper=5,
+                                initval=trace_gpd_solo.posterior.coef_exposure.mean(['chain', 'draw']))
+        coef_crossed = Uniform("coef_crossed", lower=-5., upper=5,
+                               initval=trace_gpd_solo.posterior.coef_crossed.mean(['chain', 'draw']))
         sigma = Uniform("sigma_scale", lower=0, upper=15, initval=1.)
-        ls = 90  # mc.Gamma("length_scale_scale", mu=5, sigma=1, initval=0.)
+        ls = mc.Gamma("length_scale_scale", mu=5, sigma=1, initval=0.)
         latent = mc.gp.Latent(cov_func=Matern32Chordal(2, ls), )
-        eps = latent.prior("eps_scale", _X, dims="grid", jitter=1e-7, initval=trace_gpd_solo.posterior.eps_scale.mean(['chain', 'draw']))  # corr inter-cells
-        glm = constant_scale + coef_meshs * _meshs + coef_exposure * _exp + coef_crossed * _poh * _meshs + eps[_grid] * sigma
+        eps = latent.prior("eps_scale", _X, dims="grid", jitter=1e-7,
+                           initval=trace_gpd_solo.posterior.eps_scale.mean(['chain', 'draw']))  # corr inter-cells
+        glm = constant_scale + coef_meshs * _meshs + coef_exposure * _exp + coef_crossed * _poh * _meshs + eps[
+            _grid] * sigma
         scale = (glm / scaling_factor).exp()
-        mc.Potential('bound', -at.switch(shape < -tol, at.abs(-scale / shape - 7.603124653521049), 0).sum() / scaling_factor)
+        mc.Potential('bound',
+                     -at.switch(shape < -tol, at.abs(-scale / shape - 7.603124653521049), 0).sum() / scaling_factor)
     return scale, shape
 
 
@@ -129,13 +144,20 @@ def bernoulli_over_threshold(model):
     _meshs = model.meshs
     _exp = model.exposure
     with model:
-        coef_meshs = Uniform("coef_meshs_bern", lower=-100., upper=100, initval=trace_bern_solo.posterior.coef_meshs_bern.mean(['chain', 'draw']))
-        coef_crossed_bern = Uniform("coef_crossed_bern", lower=-100., upper=100, initval=trace_bern_solo.posterior.coef_crossed_bern.mean(['chain', 'draw']))
-        seasonal = Uniform("seasonal_bern", lower=-50., upper=50, dims='season', initval=trace_bern_solo.posterior.seasonal_bern.mean(['chain', 'draw']))
-        gridcell = Uniform("gridcell_bern", lower=-100., upper=100, dims='grid', initval=trace_bern_solo.posterior.gridcell_bern.mean(['chain', 'draw']))
-        coef_exposure = Uniform("coef_exposure_bern", lower=-100., upper=100, initval=trace_bern_solo.posterior.coef_exposure_bern.mean(['chain', 'draw']))
-        coef_poh = Uniform("coef_poh_bern", lower=-100., upper=100, initval=trace_bern_solo.posterior.coef_poh_bern.mean(['chain', 'draw']))
-        constant_alpha = Uniform(f"constant_alpha", lower=0, upper=400, initval=trace_bern_solo.posterior.constant_alpha.mean(['chain', 'draw']))
+        coef_meshs = Uniform("coef_meshs_bern", lower=-100., upper=100,
+                             initval=trace_bern_solo.posterior.coef_meshs_bern.mean(['chain', 'draw']))
+        coef_crossed_bern = Uniform("coef_crossed_bern", lower=-100., upper=100,
+                                    initval=trace_bern_solo.posterior.coef_crossed_bern.mean(['chain', 'draw']))
+        seasonal = Uniform("seasonal_bern", lower=-50., upper=50, dims='season',
+                           initval=trace_bern_solo.posterior.seasonal_bern.mean(['chain', 'draw']))
+        gridcell = Uniform("gridcell_bern", lower=-100., upper=100, dims='grid',
+                           initval=trace_bern_solo.posterior.gridcell_bern.mean(['chain', 'draw']))
+        coef_exposure = Uniform("coef_exposure_bern", lower=-100., upper=100,
+                                initval=trace_bern_solo.posterior.coef_exposure_bern.mean(['chain', 'draw']))
+        coef_poh = Uniform("coef_poh_bern", lower=-100., upper=100,
+                           initval=trace_bern_solo.posterior.coef_poh_bern.mean(['chain', 'draw']))
+        constant_alpha = Uniform(f"constant_alpha", lower=0, upper=400,
+                                 initval=trace_bern_solo.posterior.constant_alpha.mean(['chain', 'draw']))
         alpha = constant_alpha + coef_exposure * _exp + gridcell[_grid] + seasonal[_season] \
                 + coef_meshs * _meshs + coef_poh * _poh + coef_crossed_bern * _poh * _meshs
         p = sigmoid(alpha)
@@ -170,7 +192,8 @@ def get_chosen_variables_for_model(model, nb_draws=None):
     vars = [v.name for v in model.free_RVs]
     bern_vars = [v for v in vars if 'bern' in v or v == 'constant_alpha']
     beta_vars = [v for v in vars[:9]]
-    pot_vars = [v for v in vars if v not in bern_vars and v not in beta_vars and v in [v for v in trace_gpd_solo.posterior.variables]]
+    pot_vars = [v for v in vars if
+                v not in bern_vars and v not in beta_vars and v in [v for v in trace_gpd_solo.posterior.variables]]
     trace_bern = trace_bern_solo.posterior[bern_vars]
     trace_beta = trace_beta_solo.posterior[beta_vars]
     trace_pot = trace_gpd_solo.posterior[pot_vars]
@@ -191,23 +214,3 @@ def fit_marginal_model_for_claim_values(data):
         trace = mc.sample(2000, init="adapt_diag", chains=1,
                           cores=1, progressbar=True)
     return trace
-
-if __name__ == '__main__':
-    import arviz as az
-    import matplotlib.pyplot as plt
-    import matplotlib
-    import matplotlib.pylab as pylab
-    matplotlib.rcParams["text.usetex"] = False
-    params = {'legend.fontsize': 'x-large',
-              'axes.facecolor': '#eeeeee',
-              'axes.labelsize': 'xx-large', 'axes.titlesize': 20, 'xtick.labelsize': 'x-large',
-              'ytick.labelsize': 'x-large'}
-    pylab.rcParams.update(params)
-    az.plot_trace(trace_beta_solo)
-    plt.show()
-
-    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(15,10))
-    tt = trace_gpd_solo.posterior.rename({'shape': r'xi', 'coef_meshs': r'sigma_1', 'constant_scale': r'sigma_0', 'coef_crossed': r'sigma_2', 'coef_exposure': r'sigma_3'})
-    az.plot_autocorr(tt, var_names=[r'xi', r'sigma_1',  r'sigma_0',  r'sigma_2',  r'sigma_3'], ax=axes.flatten())
-    fig.suptitle('Autocorrelation through time for parameters of the GPD model', fontsize=20)
-    fig.show()

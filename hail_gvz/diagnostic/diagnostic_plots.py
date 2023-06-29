@@ -10,10 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-from data.hailcount_data_processing import get_exposure, get_grid_mapping, get_train_data, get_validation_data, get_test_data
+import arviz as az
+from data.hailcount_data_processing import get_exposure, get_grid_mapping, get_train_data, get_validation_data, \
+    get_test_data
 from diagnostic.metrics import log_spectral_distance_from_xarray, spatially_convolved_ks_stat
-from models.poisson_counts import hauteur
+from models.counts import hauteur
 
 matplotlib.rcParams["text.usetex"] = True
 params = {'legend.fontsize': 'xx-large',
@@ -21,10 +22,10 @@ params = {'legend.fontsize': 'xx-large',
           'axes.labelsize': 'xx-large', 'axes.titlesize': 20, 'xtick.labelsize': 'xx-large',
           'ytick.labelsize': 'xx-large'}
 pylab.rcParams.update(params)
-DATA_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-PLOT_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/plots/')
-PRED_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/prediction/')
-FITS_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/fits/')
+DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
+FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits')
+PLOT_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/plots/')
+PRED_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/prediction/')
 threshold = 8.06
 CRS = 'EPSG:2056'
 exp_threshold = np.exp(threshold) - 1
@@ -59,11 +60,88 @@ poh = pd.read_csv(DATA_ROOT / 'Ophelia' / 'poh.csv', index_col=['latitude', 'lon
                   usecols=lambda x: ('2' in x) or x in ['latitude', 'longitude'])
 meshs = pd.read_csv(DATA_ROOT / 'Ophelia' / 'meshs.csv', index_col=['latitude', 'longitude'],
                     usecols=lambda x: ('2' in x) or x in ['latitude', 'longitude'])
-geom_roots = glob(str(pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/') / 'SHAPEFILE/swissTLMRegio_Boundaries_LV95/swissTLMRegio_KANTONSGEBIET_LV95.shp'))
+geom_roots = glob(str(DATA_ROOT/'SHAPEFILE/swissTLMRegio_Boundaries_LV95/swissTLMRegio_KANTONSGEBIET_LV95.shp'))
 df_polygon = pd.concat([geopandas.read_file(geom_root) for geom_root in geom_roots]).to_crs(epsg='4326')
 df_polygon = df_polygon[df_polygon.NAME == 'Zürich']
 lakes = glob(str(DATA_ROOT / 'SHAPEFILE/swissTLMRegio_Product_LV95/Hydrography/swissTLMRegio_Lake.shp'))
 df_lakes = geopandas.read_file(lakes[0]).to_crs(epsg='4326')
+
+def plot_mc_diagnostics(name_pot, name_beta, name_counts):
+    trace_beta_solo = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_values' / name_beta).with_suffix('.nc')))
+    trace_gpd_solo = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_values' / name_pot).with_suffix('.nc')))
+    trace_counts_solo = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_counts' / name_counts).with_suffix('.nc')))
+    fig, axes = plt.subplots(nrows=2, ncols=2, constrained_layout=True, figsize=(15, 10))
+    tt = trace_gpd_solo.posterior.rename(
+        {'shape': r'$\xi$', 'coef_meshs': r'$\sigma_1$', 'constant_scale': r'$\sigma_0$', 'coef_crossed': r'$\sigma_2$',
+         'coef_exposure': r'$\sigma_3$'})
+    az.plot_autocorr(tt.isel(chain=0), var_names=[r'$\sigma_0$', r'$\sigma_1$', r'$\sigma_2$', r'$\sigma_3$'],
+                     ax=axes.flatten(), textsize=16)
+    fig.suptitle('Autocorrelation through time for parameters of the GPD model', fontsize=20)
+    fig.show()
+    fig.savefig(f'{PLOT_ROOT}/autocorr_gpd.png', dpi=200)
+
+    fig, axes = plt.subplots(nrows=2, ncols=2, constrained_layout=True, figsize=(15, 10))
+    tt = trace_gpd_solo.posterior.rename(
+        {'shape': r'$\xi$'})
+    az.plot_posterior(tt, var_names=[r'$\xi$'], filter_vars="like",
+                      ax=axes[:, 0], hdi_prob=0.95)
+    axes[0, 1].plot(tt[r'$\xi$'].sel(season=0, chain=0))
+    axes[1, 1].plot(tt[r'$\xi$'].sel(season=1, chain=0))
+    for i in range(2):
+        axes[i, 0].set_title(r'KDE plot for the posterior of $\xi_{}$'.format(i + 1))
+    for i in range(2):
+        axes[i, 1].set_title(r'Evolution of $\xi_{}$ after initial burn-in sample'.format(i + 1))
+    fig.suptitle('Diagnostic plots for the shape parameter of the GPD model', fontsize=20)
+    fig.show()
+    fig.savefig(f'{PLOT_ROOT}/diag_shape_gpd.png', dpi=200)
+
+    fig, axes = plt.subplots(nrows=1, ncols=2, constrained_layout=True, figsize=(15, 5))
+    tt = trace_counts_solo.posterior.isel(draw=slice(55, None)).rename(
+        {'alpha': r'$\alpha$'})
+    az.plot_posterior(tt, var_names=[r'$\alpha$'], filter_vars="like",
+                      ax=axes[0], hdi_prob=0.95)
+    axes[1].plot(tt[r'$\alpha$'].sel(chain=0))
+    axes[0].set_title(r'KDE plot for the posterior of $\alpha$')
+    axes[1].set_title(r'Evolution of $\alpha$ after initial burn-in sample')
+    fig.suptitle('Diagnostic plots for the shape parameter of the Negative Binomial model', fontsize=20)
+    fig.show()
+    fig.savefig(f'{PLOT_ROOT}/diag_alpha_poisson.png', dpi=200)
+
+    fig, axes = plt.subplots(ncols=4, nrows=2, constrained_layout=True, figsize=(15, 10))
+    tt = trace_counts_solo.posterior.isel(draw=slice(55, None), season=[0, 2]).rename({'constant_intensity': r'$\mu_0$',
+                                                                                       'coef_climada': r'$\mu_1$',
+                                                                                       'coef_cross_climada_dist': r'$\mu_2$',
+                                                                                       'coef_meshs_cnt': '$\mu_3$',
+                                                                                       'coef_ws_cnt': "$\mu_4$",
+                                                                                       'sigma_dist': "$\sigma_m$",
+                                                                                       'seasonal_comp': r'$\epsilon$'})
+    vars = ['$\mu_0$', '$\mu_1$', '$\mu_2$', '$\mu_4$', r'$\epsilon$']
+    az.plot_autocorr(tt,
+                     var_names=vars,
+                     ax=axes)
+    var_names = ['$\mu_0$', '$\mu_{11}$', '$\mu_{12}$', '$\mu_{13}$', '$\mu_2$', '$\mu_3$',
+                 r'$\epsilon_1$', r'$\epsilon_2$']
+
+    for ax, var in zip(axes.flatten(), var_names):
+        ax.set_title(r"{}".format(var))
+    fig.suptitle('Autocorrelation through time for parameters of the Negative Binomial model', fontsize=20)
+    fig.show()
+    fig.savefig(f'{PLOT_ROOT}/autocorr_poisson.png', dpi=200)
+
+    beta_latex_var = r"\nu"
+    beta_varname_dic = {"precision":r"$\kappa$",
+                         "constant_mu":r"${}_0$".format(beta_latex_var),
+                         "coef_meshs_b": r"${}_1$".format(beta_latex_var),
+                         "coef_poh_b": r"${}_2$".format(beta_latex_var)}
+    fig, axes = plt.subplots(ncols=2, nrows=1, constrained_layout=True, figsize=(15, 10))
+    tt = trace_beta_solo.posterior.rename(beta_varname_dic).isel(draw=slice(2000, None))
+    az.plot_forest(tt, var_names=[v for v in beta_varname_dic.values()], filter_vars="like",
+                      ax=axes.flatten(), hdi_prob=0.95, combined=True, ess=True)
+    axes[0].set_title(r'Posterior estimates and $95\%$ CI')
+    axes[1].set_title(r'Effective sample size')
+    fig.suptitle('Diagnostic plots for parameters of the Beta model', fontsize=20)
+    fig.show()
+    fig.savefig(f'{PLOT_ROOT}/diag_forest_beta.png', dpi=200)
 
 
 def plot_climada_count_to_buildings_ratio():
@@ -593,7 +671,6 @@ def plot_all():
         path_to_counts = glob(str(pathlib.Path(PRED_ROOT / name_counts / '*').with_suffix('.csv')))
         path_to_sizes = glob(str(pathlib.Path(PRED_ROOT / name_sizes / '*').with_suffix('.csv')))
         az_counts = {p.split('/')[-1].split('.')[0]: pd.read_csv(p) for p in path_to_counts}
-        cnt_gridcell = mapping.groupby('gridcell').lat_grid.count().rename('cnt_grid').reset_index().reset_index().rename(columns={'index': 'point'}).set_index('point').to_xarray()
         counts[name_counts] = pd.concat(az_counts.values())
         counts[name_counts] = counts[name_counts].assign(meshs=lambda x: scaling * x.meshs)
         qq_counts(counts[name_counts], name)
