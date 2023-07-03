@@ -8,7 +8,7 @@ import pymc as mc
 import xarray as xr
 
 from constants import FITS_ROOT, PRED_ROOT, claim_values, nb_draws, confidence, train_cond, test_cond, valid_cond, suffix
-from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_exposure, get_grid_mapping
+from data.hailcount_data_processing import get_exposure, get_grid_mapping
 from exploratory_da.utils import associate_data_with_grid, grid_from_geopandas_pointcloud
 from models.combined_value import build_model, get_chosen_variables_for_model
 from models.counts import build_poisson_model

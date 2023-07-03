@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from constants import FITS_ROOT, PRED_ROOT, PLOT_ROOT, claim_values, quants, confidence, suffix, scaling_factor
+from constants import FITS_ROOT, PRED_ROOT, PLOT_ROOT, claim_values, quants, confidence, suffix, scaling_factor, name_pot, name_beta, name_bern
 from data.climada_processing import process_climada_counts, process_climada_perbuilding_positive_damages
 from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_exposure, get_grid_mapping
 from diagnostic.map_generation import generate_map_for_date
@@ -467,11 +467,9 @@ def plot_errors_individual_counts(counts, name):
     fig.savefig(path / 'rates_individual.png', DPI=200)
 
 
-def plot_all(name_counts, plot_exploratory=False):
-    name_pot = '20230629_15:48'
-    name_beta = '20230629_14:56'
+def plot_all(name_counts):
     plot_mc_diagnostics(name_pot, name_beta, name_counts)
-    name_sizes = f'combined_20230221_12:58_{name_beta}_{name_pot}_{name_counts}'
+    name_sizes = f'combined_{name_bern}_{name_beta}_{name_pot}_{name_counts}'
     name = name_sizes
     path_to_counts = glob(str(pathlib.Path(PRED_ROOT / name_counts / '*').with_suffix('.csv')))
     path_to_sizes = glob(str(pathlib.Path(PRED_ROOT / name_sizes / '*').with_suffix('.csv')))
