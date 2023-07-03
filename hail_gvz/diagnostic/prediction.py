@@ -7,54 +7,39 @@ import pandas as pd
 import pymc as mc
 import xarray as xr
 
-from data.hailcount_data_processing import get_exposure, get_grid_mapping
-from exploratory_da.utils import grid_from_geopandas_pointcloud, associate_data_with_grid
+from constants import FITS_ROOT, PRED_ROOT, claim_values, nb_draws, confidence, train_cond, test_cond, valid_cond, suffix
+from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_exposure, get_grid_mapping
+from exploratory_da.utils import associate_data_with_grid, grid_from_geopandas_pointcloud
 from models.combined_value import build_model, get_chosen_variables_for_model
 from models.counts import build_poisson_model
 
-DATA_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-PLOT_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/plots/')
-PRED_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/prediction/')
-FITS_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/fits/')
-DL = False
-threshold = 8.06
-exp_threshold = np.exp(threshold) - 1
-tol = 5e-2
-confidence = 1e-1
 exposure = get_exposure()
-mapping = get_grid_mapping(suffix='GVZ_emanuel', dl=DL)
-counts_gridcell = mapping.groupby('gridcell').lat_grid.count().rename('cnt_grid')
-nb_draws = 50
-claim_values = pd.read_csv(DATA_ROOT / 'processed.csv', parse_dates=['claim_date'])
-grid = grid_from_geopandas_pointcloud(
-    claim_values.drop_duplicates(['latitude', 'longitude']).assign(
-        geom_point=lambda x: geopandas.points_from_xy(x['longitude'], x['latitude'])).set_geometry('geom_point'))
+mapping = get_grid_mapping(suffix=suffix)
 weights = claim_values[claim_values.claim_date >= pd.to_datetime('2008-01-01')].groupby(
     ['latitude', 'longitude']).gridcell.count().rename('weight').reset_index()
 weights = exposure.merge(weights, on=['latitude', 'longitude'], how='left').fillna(0.).assign(
     weight=lambda x: x.weight * x.value / x.volume)[['weight', 'latitude', 'longitude']]
-train_cond = lambda x: (int(pd.to_datetime(x).strftime('%Y')) >= 2008)
-test_cond = lambda x: (int(pd.to_datetime(x).strftime('%Y')) < 2005)
-valid_cond = lambda x: (int(pd.to_datetime(x).strftime('%Y')) < 2008) & (int(pd.to_datetime(x).strftime('%Y')) >= 2005)
+grid = grid_from_geopandas_pointcloud(
+    claim_values.drop_duplicates(['latitude', 'longitude']).assign(
+        geom_point=lambda x: geopandas.points_from_xy(x['longitude'], x['latitude'])).set_geometry('geom_point'))
 
 
 def generate_and_save_counts_prediction(data, name_set, name_counts):
     trace_counts = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_counts' / name_counts).with_suffix('.nc')))
     path = PRED_ROOT / f'{name_counts}'
     path.mkdir(parents=True, exist_ok=True)
-    p = mc.sample_posterior_predictive(trace_counts.sel(draw=slice(150, 200)),
-                                       model=build_poisson_model(data, mapping, exposure))
+    p = mc.sample_posterior_predictive(trace_counts, model=build_poisson_model(data, mapping, exposure))
     d = xr.merge([p.constant_data.meshs,
                   p.constant_data.grid_idx,
                   p.constant_data.time_idx,
                   p.constant_data.poh,
                   p.constant_data.climada_cnt,
                   p.observed_data.counts.rename('obscnt'),
-                  p.posterior_predictive.counts.quantile(0.8, ['chain', 'draw']).drop('quantile').rename('pred_cnt'),
+                  p.posterior_predictive.counts.quantile(0.856, ['chain', 'draw']).drop('quantile').rename('pred_cnt'),
                   p.posterior_predictive.counts.where(p.posterior_predictive.counts > 0).mean(['chain', 'draw']).rename(
                       'mean_pos'),
-                  p.posterior_predictive.counts.quantile(0.75, ['chain', 'draw']).drop('quantile').rename('lb_counts'),
-                  p.posterior_predictive.counts.quantile(0.85, ['chain', 'draw']).drop('quantile').rename('ub_counts'),
+                  p.posterior_predictive.counts.quantile(0.8, ['chain', 'draw']).drop('quantile').rename('lb_counts'),
+                  p.posterior_predictive.counts.quantile(0.9, ['chain', 'draw']).drop('quantile').rename('ub_counts'),
                   p.posterior_predictive.counts.mean(['chain', 'draw']).rename('mean_cnt')])
     counts_df = d.to_dataframe().assign(claim_date=lambda x: data.reset_index().claim_date.unique()[x.time_idx]) \
         .assign(gridcell=lambda x: mapping.gridcell.unique()[x.grid_idx]).merge(
@@ -136,8 +121,8 @@ def generate_prediction_for_date(date, dc_day, mapping=mapping, nb_draws=nb_draw
         cond_damage=predicted_sizes.posterior_predictive.scaled)
     if path_to_sizes:
         d = xr.merge([(
-                                  predicted_sizes.posterior_predictive.cond_damage + predicted_sizes.constant_data.climada_dmg.rename(
-                              {'climada_dmg_dim_0': 'point'})).rename('pred_size'),
+                              predicted_sizes.posterior_predictive.cond_damage + predicted_sizes.constant_data.climada_dmg.rename(
+                          {'climada_dmg_dim_0': 'point'})).rename('pred_size'),
                       predicted_sizes.constant_data.longitude.rename({'longitude_dim_0': 'point'}),
                       predicted_sizes.constant_data.latitude.rename({'latitude_dim_0': 'point'})]).expand_dims(
             {'claim_date': [date]})
@@ -146,8 +131,8 @@ def generate_prediction_for_date(date, dc_day, mapping=mapping, nb_draws=nb_draw
         d.to_netcdf(str(path_to_nc))
     # Combining counts and sizes
     predicted_size = (
-                predicted_sizes.posterior_predictive.cond_damage + predicted_sizes.constant_data.climada_dmg.rename(
-            {'climada_dmg_dim_0': 'point'})).mean(['chain', 'draw'])
+            predicted_sizes.posterior_predictive.cond_damage + predicted_sizes.constant_data.climada_dmg.rename(
+        {'climada_dmg_dim_0': 'point'})).mean(['chain', 'draw'])
     q05 = (predicted_sizes.posterior_predictive.cond_damage + predicted_sizes.constant_data.climada_dmg.rename(
         {'climada_dmg_dim_0': 'point'})).quantile(confidence, dim=['chain', 'draw'])
     q95 = (predicted_sizes.posterior_predictive.cond_damage + predicted_sizes.constant_data.climada_dmg.rename(

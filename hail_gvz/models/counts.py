@@ -1,28 +1,20 @@
+import datetime
 import pathlib
 
 import aesara.tensor as at
 import arviz as az
 import geopandas
+import geoplot
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pymc as mc
 from pymc import Uniform
 from shapely.geometry import Point
 
-from data.hailcount_data_processing import delta, timestep
+from constants import FITS_ROOT, PLOT_ROOT, pow_climada, origin, scaling_factor
+from data.hailcount_data_processing import get_train_data, get_grid_mapping, get_exposure
 from pymc_utils.pymc_distributions import sigmoid, Matern32Chordal, binom_counts_alphamu
-
-PRED_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/prediction/')
-FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits/')
-tol = 1e-5
-scaling_factor = 1e2
-pow_climada = 3
-origin = (8.36278492095831, 47.163852336888695)
-timestep_days = pd.to_timedelta(timestep).days
-area = delta ** 2
-previous = '20230326_09:51'
-PLOT_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/plots/')
-trace_previous = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_counts' / previous).with_suffix('.nc')))
 
 
 def distance_from_coordinates(z1, z2):
@@ -117,8 +109,8 @@ def poisson_counts_model(model):
                           + coef_meshs_cnt * _meshs * dist_term + seasonal
         climada_block = pointwise_block + eps[
             _grid] * sigma
-        null_climada_block = pointwise_block + eps[_grid] * sigma1
-        logmu = at.switch(_climadacnt >= 1, climada_block, null_climada_block)
+        # null_climada_block = pointwise_block + eps[_grid] * sigma1
+        logmu = climada_block  # at.switch(_climadacnt >= 1, climada_block, null_climada_block)
         glm_mu = logmu / scaling_factor
         # psi
         psi0 = mc.Gamma('psi0', alpha=2, beta=2)
@@ -179,6 +171,62 @@ def fit_marginal_model_for_claim_count(data, mapping, exposure):
     with model:
         # fit model
         print('Fitting model for claim count...')
-        trace = mc.sample(200, tune=100, chains=1, init='adapt_diag',
+        trace = mc.sample(200, tune=150, chains=1, init='jitter+adapt_diag_grad',
                           progressbar=True)
     return trace
+
+
+if __name__ == '__main__':
+    train_data = get_train_data(suffix='GVZ_emanuel')
+    name_mod = datetime.datetime.now().strftime('%Y%m%d_%H:%M')
+    mapping = get_grid_mapping(suffix='GVZ_emanuel')
+    exposure = get_exposure()
+    trace = fit_marginal_model_for_claim_count(train_data, mapping, exposure)
+    f = trace.posterior.eps_scale.mean('draw').to_dataframe().reset_index()
+    f = f.rename(columns={'grid': 'gridcell'}).merge(mapping.drop_duplicates(subset='gridcell')[['geometry', 'gridcell']], on='gridcell', how='left')
+    f = f.set_geometry('geometry')
+    geoplot.choropleth(f, hue='eps_scale', legend=True)
+    path_plots = PLOT_ROOT / name_mod
+    path_plots.mkdir(parents=True, exist_ok=True)
+    plt.savefig(path_plots / 'eps.png', DPI=200)
+    plt.show()
+    plt.clf()
+
+    trace.log_likelihood.counts.plot()
+    plt.savefig(path_plots / 'll.png', dpi=200)
+    plt.show()
+    path = str(pathlib.Path(FITS_ROOT / 'claim_counts' / name_mod).with_suffix('.nc'))
+    ndf = trace.to_netcdf(path)
+
+    fig, axes = plt.subplots(ncols=4, nrows=2, constrained_layout=True, figsize=(15, 10))
+    tt = trace.posterior.isel(draw=slice(55, None), season=[0, 2]).rename({'constant_intensity': r'$\mu_0$',
+                                                                           'coef_climada': r'$\mu_1$',
+                                                                           'coef_cross_climada_dist': r'$\mu_2$',
+                                                                           'coef_meshs_cnt': '$\mu_3$',
+                                                                           'coef_ws_cnt': "$\mu_4$",
+                                                                           'sigma_dist': "$\sigma_m$",
+                                                                           'seasonal_comp': r'$\epsilon$'})
+    vars = ['$\mu_0$', '$\mu_1$', '$\mu_2$', '$\mu_4$', r'$\epsilon$']
+    az.plot_autocorr(tt,
+                     var_names=vars,
+                     ax=axes, max_lag=100)
+    var_names = ['$\mu_0$', '$\mu_{11}$', '$\mu_{12}$', '$\mu_{13}$', '$\mu_2$', '$\mu_3$',
+                 r'$\epsilon_1$', r'$\epsilon_2$']
+
+    for ax, var in zip(axes.flatten(), var_names):
+        ax.set_title(r"{}".format(var))
+    fig.suptitle('Autocorrelation through time for parameters of the Negative Binomial model', fontsize=20)
+    fig.show()
+    fig.savefig(path_plots / 'autocorr_counts.png', dpi=200)
+
+    fig, axes = plt.subplots(nrows=1, ncols=2, constrained_layout=True, figsize=(15, 5))
+    tt = trace.posterior.isel(draw=slice(55, None)).rename(
+        {'alpha': r'$\alpha$'})
+    az.plot_posterior(tt, var_names=[r'$\alpha$'], filter_vars="like",
+                      ax=axes[0])
+    axes[1].plot(tt[r'$\alpha$'].sel(chain=0))
+    axes[0].set_title(r'Autocorrelation through time for $\alpha$')
+    axes[1].set_title(r'Evolution of $\alpha$ after initial burn-in sample')
+    fig.suptitle('Diagnostic plots for the shape parameter of the Negative Binomial model', fontsize=20)
+    fig.show()
+    fig.savefig(path_plots / 'diag_alpha_poisson.png', dpi=200)

@@ -1,25 +1,14 @@
-import datetime
-import os
-import pathlib
-
 import aesara.tensor as at
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as mc
 from pymc import Uniform
 
-from data.haildamage_data_processing import get_train_data
+from constants import DATA_ROOT, scaling_factor, threshold
 from pykelihood.distributions import GPD
 from pymc_utils.pymc_distributions import Matern32Chordal, gpd_without_loc
 from threshold_selection import threshold_selection_GoF
 
-DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
-FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
-scaling_factor = 100
-tol = 1e-5
-threshold = 8.06
-exp_threshold = np.exp(threshold) - 1
 link_pot = lambda x: np.log1p(x) - threshold
 
 
@@ -64,8 +53,6 @@ def gpd_extreme(model, _above):
         glm = constant_scale + coef_meshs * _meshs + coef_exposure * _exp + coef_crossed * _poh * _meshs + eps[
             _grid] * sigma
         scale = (glm / scaling_factor).exp()
-        # mc.Potential('bound',
-        # -at.switch(shape < -tol, at.abs(-scale / shape - 7.603124653521049), 0).sum() / scaling_factor)
     return scale, shape
 
 

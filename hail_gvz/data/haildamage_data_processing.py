@@ -1,19 +1,10 @@
-import os
-import pathlib
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sklearn
 
+from constants import DATA_ROOT
 from exploratory_da.utils import grid_from_geopandas_pointcloud, associate_claim_data_with_grid, process_haildamage_data, \
     process_exposure_data, associate_exposure_data_with_grid
-
-plt.rcParams["figure.constrained_layout.use"] = True
-DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
-FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
-scaling_factor = 1
-tol = 1e-5
 
 
 # HAIL DAMAGES

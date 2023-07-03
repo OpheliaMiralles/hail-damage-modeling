@@ -1,54 +1,27 @@
 import math
 import pathlib
-from glob import glob
 
 import cartopy
 import geopandas
 import geoplot
 import matplotlib
-import matplotlib.pylab as pylab
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from data.hailcount_data_processing import get_exposure, get_grid_mapping
-from prediction import generate_prediction_for_date
+from constants import PLOT_ROOT, DATA_ROOT, PRED_ROOT, claim_values, CRS, confidence, nb_draws, df_polygon, df_lakes, suffix
+from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_grid_mapping
+from diagnostic.prediction import generate_prediction_for_date, get_pred_counts_for_day
 
-matplotlib.rcParams["text.usetex"] = True
-params = {'legend.fontsize': 'x-large',
-          'axes.facecolor': '#eeeeee',
-          'axes.labelsize': 'xx-large', 'axes.titlesize': 20, 'xtick.labelsize': 'x-large',
-          'ytick.labelsize': 'x-large'}
-pylab.rcParams.update(params)
-DATA_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-PLOT_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/plots/')
-PRED_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/prediction/')
-FITS_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/fits/')
-CRS = 'EPSG:2056'
-threshold = 8.06
-DL = False
-suffix = 'GVZ_emanuel'
-exp_threshold = np.exp(threshold) - 1
-tol = 5e-2
-confidence = 5e-2
-exposure = get_exposure()
-mapping = get_grid_mapping(DL, suffix=suffix)
-mapping = mapping.assign(geom_point=geopandas.GeoSeries.from_wkt(mapping.geom_point))
-counts_gridcell = mapping.groupby('gridcell').lat_grid.count().rename('cnt_grid')
-nb_draws = 10
-claim_values = pd.read_csv(DATA_ROOT / 'processed.csv', parse_dates=['claim_date'])
+mapping = get_grid_mapping(suffix=suffix)
+spatial_extent = [mapping.longitude.min() - 0.01, mapping.longitude.max() + 0.01,
+                  mapping.latitude.min() - 0.01, mapping.latitude.max() + 0.01]
 
 
 def plot_counts(counts_csv, name_counts):
     path = PLOT_ROOT / name_counts
     path.mkdir(parents=True, exist_ok=True)
-    geom_roots = glob(
-        str(pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/') / 'SHAPEFILE/swissTLMRegio_Boundaries_LV95/swissTLMRegio_KANTONSGEBIET_LV95.shp'))
-    df_polygon = pd.concat([geopandas.read_file(geom_root) for geom_root in geom_roots]).to_crs(epsg='4326')
-    df_polygon = df_polygon[df_polygon.NAME == 'Zürich']
-    lakes = glob(str(pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/') / 'SHAPEFILE/swissTLMRegio_Product_LV95/Hydrography/swissTLMRegio_Lake.shp'))
-    df_lakes = geopandas.read_file(lakes[0]).to_crs(epsg='4326')
-    climada_counts = pd.read_csv(DATA_ROOT / 'Ophelia' / 'GVZ_emanuel' / 'climada_cnt.csv', index_col=['latitude', 'longitude'],
+    climada_counts = pd.read_csv(DATA_ROOT / 'GVZ_emanuel' / 'climada_cnt.csv', index_col=['latitude', 'longitude'],
                                  usecols=lambda x: ('2' in x) or x in ['latitude', 'longitude'])
     climada_counts_date = [climada_counts[c].rename('climadadmg').to_frame().assign(claim_date=pd.to_datetime(c)) for c in climada_counts.columns]
     climada_count_pos = pd.concat([d[d.climadadmg > 0] for d in climada_counts_date])
@@ -58,7 +31,7 @@ def plot_counts(counts_csv, name_counts):
     climada_counts = climada_counts.set_index(['longitude', 'latitude', 'claim_date'])
     cc = climada_counts.dissolve(['gridcell', 'claim_date'], 'sum').climadadmg.rename('climada_cnt').reset_index().merge(mapping.drop_duplicates('gridcell')[['gridcell', 'geometry']],
                                                                                                                          on='gridcell', how='left').set_geometry('geometry')
-    for date in ['2021-07-12', '2009-05-12', '2004-07-08']:
+    for date in counts_csv.claim_date.unique():
         spec_date = counts_csv[counts_csv.claim_date == date]
         poscounts = spec_date[spec_date.obscnt >= 1]
         pospred = spec_date[spec_date.pred_cnt >= 1]
@@ -89,9 +62,9 @@ def plot_counts(counts_csv, name_counts):
                 df_lakes.plot(ax=ax, facecolor='royalblue', alpha=0.5)
                 ax.add_feature(cartopy.feature.BORDERS.with_scale('10m'), color='black')
                 ax.add_feature(cartopy.feature.COASTLINE.with_scale('10m'), color='black')
-                ax.set_extent([mapping.longitude.min() - 0.01, mapping.longitude.max() + 0.01, mapping.latitude.min() - 0.01, mapping.latitude.max() + 0.01])
+                ax.set_extent(spatial_extent)
             fig.suptitle(date, fontsize=20)
-            fig.show()
+            # fig.show()
             path_plot = path / f'pred_poisson_{name_counts}_{date}.png'
             fig.savefig(path_plot, DPI=200)
 
@@ -127,7 +100,7 @@ def generate_map_from_predicted_sizes(random_date, predicted_sizes, path=None, n
         .merge(mapping[['latitude', 'longitude', 'gridcell', 'geom_point']], on=['longitude', 'latitude'], how='left').set_geometry('geom_point')
     pred_pos = predicted_sizes.assign(geom_point=lambda x: geopandas.GeoSeries.from_xy(x.longitude, x.latitude)).set_geometry('geom_point')
     # Combining counts and sizes
-    climada_damages = pd.read_csv(DATA_ROOT / 'Ophelia' / 'GVZ_emanuel' / 'climada_dmg.csv', index_col=['latitude', 'longitude'],
+    climada_damages = pd.read_csv(DATA_ROOT / 'GVZ_emanuel' / 'climada_dmg.csv', index_col=['latitude', 'longitude'],
                                   usecols=lambda x: ('2' in x) or x in ['latitude', 'longitude'])
     if random_date.strftime('%Y-%m-%d') in climada_damages.columns:
         climada_pred_pos = climada_damages[random_date.strftime('%Y-%m-%d')].rename('climadadmg')
@@ -136,14 +109,7 @@ def generate_map_from_predicted_sizes(random_date, predicted_sizes, path=None, n
                                                                                                                  on=['latitude', 'longitude'], how='left')
         climada_pred_pos = climada_pred_pos.groupby('gridcell').climadadmg.sum().reset_index().merge(mapping.drop_duplicates('gridcell')[['gridcell', 'geometry']], on='gridcell',
                                                                                                      how='left').set_geometry('geometry')
-    # Geography
-    geom_roots = glob(str(pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/') / 'SHAPEFILE/swissTLMRegio_Boundaries_LV95/swissTLMRegio_KANTONSGEBIET_LV95.shp'))
-    df_polygon = pd.concat([geopandas.read_file(geom_root) for geom_root in geom_roots]).to_crs(epsg='4326')
-    df_polygon = df_polygon[df_polygon.NAME == 'Zürich']
-    lakes = glob(str(DATA_ROOT / 'SHAPEFILE/swissTLMRegio_Product_LV95/Hydrography/swissTLMRegio_Lake.shp'))
-    df_lakes = geopandas.read_file(lakes[0]).to_crs(epsg='4326')
-
-    # Plots
+        # Plots
     fig, axes = plt.subplots(ncols=3, figsize=(19, 7), constrained_layout=True, subplot_kw={'projection': cartopy.crs.PlateCarree()})
     ax1, ax2, ax3 = axes.flatten()
     vmin = min(obs_pos['claim_value'].min(), pred_pos['mean_pred_size'].min()) if len(obs_pos) else pred_pos['mean_pred_size'].min()
@@ -173,8 +139,7 @@ def generate_map_from_predicted_sizes(random_date, predicted_sizes, path=None, n
         ax2.set_title(f'CLIMADA predicted damages: CHF0', fontsize=18)
     geoplot.pointplot(pred_pos, hue='mean_pred_size', cmap=cmap, norm=norm, legend=False, ax=ax3, s=3)
     for ax in [ax1, ax2, ax3]:
-        ax.set_extent([mapping.longitude.min() - 0.01, mapping.longitude.max() + 0.01,
-                       mapping.latitude.min() - 0.01, mapping.latitude.max() + 0.01])
+        ax.set_extent(spatial_extent)
     ax1.set_title(f'Observed damages: CHF{number_to_scientific(obs_pos["claim_value"].sum())}', fontsize=18)
     ax3.set_title(
         f'Predicted damages: CHF{number_to_scientific(pred_pos["mean_pred_size"].sum())} / {int(100 * (1 - confidence))}\%CI[{number_to_scientific(pred_pos["lb_pred"].sum())},'
@@ -182,7 +147,7 @@ def generate_map_from_predicted_sizes(random_date, predicted_sizes, path=None, n
     fig.colorbar(sm, ax=axes, fraction=0.6, label='per-building damage (CHF)', pad=0.02, extend='both', aspect=70)
     fig.colorbar(csm, ax=axes, fraction=0.6, label='per-cell damage (CHF)', pad=0.02, extend='both', aspect=70)
     fig.suptitle(random_date.strftime('%Y-%m-%d'), fontsize=20)
-    fig.show()
+    # fig.show()
     p = path or PLOT_ROOT / name_sizes
     path_to_plots = pathlib.Path(p / date_str, with_suffix='png')
     path_to_plots.parent.mkdir(exist_ok=True, parents=True)

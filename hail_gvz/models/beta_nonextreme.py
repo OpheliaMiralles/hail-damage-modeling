@@ -1,23 +1,11 @@
-import datetime
-import os
-import pathlib
-
-import arviz as az
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pymc as mc
 from pymc import Uniform
 
-from data.haildamage_data_processing import get_train_data
+from constants import threshold, scaling_factor
 from pymc_utils.pymc_distributions import beta_distri, RatQuadChordal
 
-plt.rcParams["figure.constrained_layout.use"] = True
-DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
-FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
-scaling_factor = 100
-tol = 1e-5
-threshold = 8.06
 link_beta = lambda x: x / (np.exp(threshold) - 1)
 
 

@@ -1,31 +1,21 @@
-import os
-import pathlib
-
 import geopandas
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from constants import DATA_ROOT, delta, timestep, CRS
 from exploratory_da.utils import process_data_with_modelled_formatting, grid_from_geopandas_pointcloud, process_exposure_data
-
-DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
-FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
-scaling_factor = 1
-tol = 1e-5
-CRS = 'EPSG:2056'
-delta = 0.015
-timestep = '1d'
 
 
 def sparsify_data(suffix=None):
     root_to_counts = DATA_ROOT / suffix if suffix else DATA_ROOT
     suffix_str = f'_{suffix}' if suffix else ''
     for src, name in (
-             (f'df_poh{suffix_str}.csv', 'poh'),
-             (f'df_meshs{suffix_str}.csv', 'meshs'),
+            (f'df_poh{suffix_str}.csv', 'poh'),
+            (f'df_meshs{suffix_str}.csv', 'meshs'),
             (f'df_imp_modelled{suffix_str}_PAA.csv', 'climada_cnt'),
             (f'df_imp_modelled{suffix_str}.csv', 'climada_dmg'),
-             (f'df_imp_observed{suffix_str}.csv', 'obs_cnt')
+            (f'df_imp_observed{suffix_str}.csv', 'obs_cnt')
     ):
         print(f"Reading {name}")
         r = process_data_with_modelled_formatting(root_to_counts / src)
@@ -138,6 +128,7 @@ def get_grid_mapping(dl=False, suffix=None):
     target = DATA_ROOT / suffix if suffix else DATA_ROOT
     m = pd.read_csv(str(target / 'location_grid_mapping.csv'))
     mapping = m.assign(geometry=lambda x: geopandas.GeoSeries.from_wkt(x.geometry)).set_geometry('geometry').rename(columns={'index': 'location'}).sort_values('gridcell')
+    mapping = mapping.assign(geom_point=geopandas.GeoSeries.from_wkt(mapping.geom_point))
     return mapping
 
 

@@ -1,7 +1,5 @@
-import os
 import pathlib
 
-import aesara.tensor as at
 import arviz as az
 import numpy as np
 import pandas as pd
@@ -9,23 +7,13 @@ import pymc as mc
 import xarray as xr
 from pymc import Uniform
 
+from constants import DATA_ROOT, FITS_ROOT, scaling_factor, threshold, exp_threshold, name_beta, name_pot, name_bern
 from pykelihood.distributions import GPD
 from pymc_utils.pymc_distributions import Matern32Chordal, RatQuadChordal, sigmoid, beta_distri_unobserved, \
     combined_beta_gpd, gpd_without_loc_unobserved, bernoulli_distri, combined_bern_beta_gpd, \
     bernoulli_distri_unobserved
 from threshold_selection import threshold_selection_GoF
 
-DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
-FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
-scaling_factor = 100
-tol = 1e-3
-threshold = 8.06
-exp_threshold = np.exp(threshold) - 1
-link_pot = lambda x: np.log1p(x) - threshold
-link_beta = lambda x: x / (np.exp(threshold) - 1)
-name_pot = '20230629_15:48'
-name_beta = '20230629_14:56'
-name_bern = '20230221_12:58'
 trace_beta_solo = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_values' / name_beta).with_suffix('.nc')))
 trace_gpd_solo = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_values' / name_pot).with_suffix('.nc')))
 trace_bern_solo = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_values' / name_bern).with_suffix('.nc')))
@@ -114,27 +102,20 @@ def gpd_model(model):
     _meshs = model.meshs
     _exp = model.exposure
     with model:
-        # shape parameter
         init_shape = [-0.12960985886908538, -4.743355860126307e-05]
-        shape = mc.Normal("shape", mu=init_shape, sigma=[0.1, 0.05], dims='season', initval=init_shape)[_season]
+        shape = mc.Normal("shape", mu=init_shape, sigma=[0.1, 0.05], dims='season', initval=[0] * 2)[_season]
         # scale parameter
-        constant_scale = Uniform(f"constant_scale", lower=-40, upper=40, initval=-2.0202707317519466)
-        coef_meshs = Uniform("coef_meshs", lower=-5., upper=5,
-                             initval=trace_gpd_solo.posterior.coef_meshs.mean(['chain', 'draw']))
-        coef_exposure = Uniform("coef_exposure", lower=-5., upper=5,
-                                initval=trace_gpd_solo.posterior.coef_exposure.mean(['chain', 'draw']))
-        coef_crossed = Uniform("coef_crossed", lower=-5., upper=5,
-                               initval=trace_gpd_solo.posterior.coef_crossed.mean(['chain', 'draw']))
-        sigma = Uniform("sigma_scale", lower=0, upper=15, initval=1.)
-        ls = mc.Gamma("length_scale_scale", mu=5, sigma=1, initval=0.)
+        constant_scale = Uniform(f"constant_scale", lower=-40, upper=40)
+        coef_meshs = Uniform("coef_meshs", lower=-5., upper=5)
+        coef_exposure = Uniform("coef_exposure", lower=-5., upper=5)
+        coef_crossed = Uniform("coef_crossed", lower=-5., upper=5)
+        sigma = Uniform("sigma_scale", lower=0, upper=15)
+        ls = mc.Gamma("length_scale_scale", mu=5, sigma=1)
         latent = mc.gp.Latent(cov_func=Matern32Chordal(2, ls), )
-        eps = latent.prior("eps_scale", _X, dims="grid", jitter=1e-7,
-                           initval=trace_gpd_solo.posterior.eps_scale.mean(['chain', 'draw']))  # corr inter-cells
+        eps = latent.prior("eps_scale", _X, dims="grid", jitter=1e-7)  # corr inter-cells
         glm = constant_scale + coef_meshs * _meshs + coef_exposure * _exp + coef_crossed * _poh * _meshs + eps[
             _grid] * sigma
         scale = (glm / scaling_factor).exp()
-        mc.Potential('bound',
-                     -at.switch(shape < -tol, at.abs(-scale / shape - 7.603124653521049), 0).sum() / scaling_factor)
     return scale, shape
 
 
@@ -212,6 +193,6 @@ def fit_marginal_model_for_claim_values(data):
     with model:
         # fit model
         print('Fitting model...')
-        trace = mc.sample(2000, init="adapt_diag", chains=1,
+        trace = mc.sample(200, init="jitter+adapt_diag_grad", chains=1,
                           cores=1, progressbar=True)
     return trace

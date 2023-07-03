@@ -1,40 +1,35 @@
-import os
-import pathlib
 from glob import glob
 
 import cartopy
-import cartopy.crs as ccrs
-import contextily as ctx
 import cv2
 import geopandas
 import geoplot
 import matplotlib
-import matplotlib.pylab as pylab
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import xarray as xr
 
-from data.hailcount_data_processing import get_grid_mapping
+from constants import DATA_ROOT, PLOT_ROOT, claim_values, df_polygon, df_lakes, CRS, suffix
+from data.climada_processing import process_climada_perbuilding_positive_damages
+from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_exposure, get_grid_mapping
 from extreme_values_visualization import extremogram_plot
+from models.counts import hauteur
 from threshold_selection import threshold_selection_GoF
 from utils import grid_from_geopandas_pointcloud, aggregate_claim_data, compute_extremal_correlation_over_grid, get_extremal_corr, get_spearman_corr
 
-mapping = get_grid_mapping(suffix='GVZ_emanuel')
-mapping = mapping.assign(geom_point=geopandas.GeoSeries.from_wkt(mapping.geom_point))
-params = {'legend.fontsize': 'xx-large',
-          'axes.facecolor': '#eeeeee',
-          'axes.labelsize': 'xx-large', 'axes.titlesize': 20, 'xtick.labelsize': 'xx-large',
-          'ytick.labelsize': 'xx-large'}
-pylab.rcParams.update(params)
-matplotlib.rcParams["text.usetex"] = True
-DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
-PLOT_ROOT = pathlib.Path(os.getenv('PLOT_ROOT', ''))
-EXPOSURES_ROOT = pathlib.Path(DATA_ROOT / 'GVZ_Exposure_202201').with_suffix('.csv')
-HAILSTORM_ROOT = pathlib.Path(DATA_ROOT / 'GVZ_Hail_Loss_200001_to_202203').with_suffix('.csv')
-CRS = 'EPSG:2056'
-CCRS = ccrs.epsg(2056)
+plot_path = PLOT_ROOT / 'exploratory'
+exposure = get_exposure()
+mapping = get_grid_mapping(suffix=suffix)
+poh = pd.read_csv(DATA_ROOT / 'poh.csv', index_col=['latitude', 'longitude'],
+                  usecols=lambda x: ('2' in x) or x in ['latitude', 'longitude'])
+meshs = pd.read_csv(DATA_ROOT / 'meshs.csv', index_col=['latitude', 'longitude'],
+                    usecols=lambda x: ('2' in x) or x in ['latitude', 'longitude'])
+climada_damages = process_climada_perbuilding_positive_damages()
+obs_damages = claim_values[['claim_date', 'longitude', 'latitude', 'claim_value', 'MESHS']].merge(mapping[['latitude', 'longitude', 'gridcell']], on=['latitude', 'longitude'], how='left')
+spatial_extent = [mapping.longitude.min() - 0.01, mapping.longitude.max() + 0.01,
+                  mapping.latitude.min() - 0.01, mapping.latitude.max() + 0.01]
 
 
 def plot_average_claim_values_time(df):
@@ -48,28 +43,160 @@ def plot_average_claim_values_time(df):
     ax.set_yscale('log')
     ax.set_title('a) Hail-related damages distribution per month')
     fig.show()
-    fig.savefig(str(PLOT_ROOT / 'average_total_claims.png'), DPI=200)
+    fig.savefig(str(plot_path / 'average_total_claims.png'), DPI=200)
 
 
-def plot_climada_exposure(exp):
-    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5), subplot_kw={'projection': ccrs.epsg(3857)})
-    exp.plot_basemap(axis=ax1)
-    ax1.set_title('Pointwise log exposure')
-    exp.plot_hexbin(axis=ax2)
-    ax2.set_title('Total log exposure over spatial bins')
-    ctx.add_basemap(ax=ax2, origin='upper', url=ctx.providers.Stamen.Terrain)
+def plot_climada_count_to_buildings_ratio():
+    i = climada_damages.groupby(['gridcell', 'claim_date']).climadadmg.count().to_frame().merge(obs_damages.groupby(['gridcell', 'claim_date']).claim_value.count().to_frame(), how='outer',
+                                                                                                left_index=True, right_index=True).fillna(
+        0.)
+    cnt_gridcell = mapping.groupby('gridcell').latitude.count().rename('cnt_gridcell')
+    i = i.merge(cnt_gridcell, left_on='gridcell', right_index=True, how='left').reset_index()
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(15, 6), constrained_layout=True)
+    ax1.scatter(i.claim_date, 100 * i.climadadmg / i.cnt_gridcell, marker='x', color='slategrey', s=6)
+    ax2.scatter(i.claim_date, 100 * i.claim_value / i.cnt_gridcell, marker='x', color='slategrey', s=6)
+    ax1.set_title('a) CLIMADA per-building')
+    ax2.set_title('b) Observed')
+    for ax in [ax1, ax2]:
+        ax.hlines(100, i.claim_date.min(), i.claim_date.max(), color='black')
+        ax.set_xlabel('time')
+        ax.set_ylabel('ratio (\%)')
+    fig.suptitle('Impacted buildings/Total number of buildings per cell', fontsize=20)
     fig.show()
-    fig.savefig(str(PLOT_ROOT / 'climada_exposure.png'), DPI=200)
+    fig.savefig(plot_path / 'claim_building_ratio.png', DPI=200)
+
+
+def plot_climada_compensation():
+    g = climada_damages.groupby('claim_date').climadadmg.sum().to_frame().merge(obs_damages.groupby('claim_date').claim_value.sum().to_frame(), how='outer', left_index=True, right_index=True).fillna(
+        0.)
+    h = climada_damages.climadadmg.to_frame().merge(obs_damages.set_index(['claim_date', 'longitude', 'latitude']).claim_value.to_frame(), how='outer', left_index=True, right_index=True).fillna(
+        0.)
+    i = climada_damages.groupby(['gridcell', 'claim_date']).climadadmg.count().to_frame().merge(obs_damages.groupby(['gridcell', 'claim_date']).claim_value.count().to_frame(), how='outer',
+                                                                                                left_index=True, right_index=True).fillna(
+        0.)
+    fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=(22, 7), constrained_layout=True)
+    for data, ax in zip([i, h, g], [ax1, ax2, ax3]):
+        ax.scatter(data.claim_value, data.climadadmg, marker='x', color='slategrey')
+        ax.plot(data.claim_value,
+                data.claim_value, label='$x=y$', color='slategrey')
+        ax.legend(loc='upper left')
+        ax.set_xlabel('observed')
+        ax.set_ylabel('predicted')
+        ax.set_yscale(matplotlib.scale.FuncScaleLog(axis=1, functions=[lambda x: 1 + x, lambda x: x - 1]))
+        ax.set_xscale(matplotlib.scale.FuncScaleLog(axis=0, functions=[lambda x: 1 + x, lambda x: x - 1]))
+    ax1.set_title('a) Number of buildings with positive damages per 2km gridcell per day')
+    ax2.set_title('b) Claim value for single buildings per day')
+    ax3.set_title('c) Total damages (CHF) over the canton per day')
+    fig.suptitle('Compensation mechanism for the per-building CLIMADA damage prediction', fontsize=20)
+    fig.show()
+    fig.savefig(plot_path / 'compensation_climada.png', DPI=200)
+
+
+def plot_example_day_and_line():
+    dates = [pd.to_datetime('2004-07-08'), pd.to_datetime('2009-05-12'), pd.to_datetime('2012-06-30')]
+    devs = [0.14, 0.02, 0.18]
+    coef = [0.5, 1, 1]
+    train_cond = lambda x: (int(pd.to_datetime(x).strftime('%Y')) >= 2008)
+    test_cond = lambda x: (int(pd.to_datetime(x).strftime('%Y')) < 2005)
+    dates_str = [d.strftime('%Y-%m-%d') for d in dates]
+    origin = (8.36278492095831, 47.163852336888695)
+    fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(15, 10), constrained_layout=True,
+                             subplot_kw={'projection': cartopy.crs.PlateCarree()})
+    for ax in axes.flatten():
+        df_polygon.plot(ax=ax, facecolor='oldlace', edgecolor='grey')
+        df_lakes.plot(ax=ax, facecolor='royalblue', alpha=0.5)
+        ax.add_feature(cartopy.feature.BORDERS.with_scale('10m'), color='black')
+        ax.add_feature(cartopy.feature.COASTLINE.with_scale('10m'), color='black')
+    for d, d_str, ax, co, dev in zip(dates, dates_str, axes.T, coef, devs):
+        ax1 = ax[0]
+        ax2 = ax[1]
+        if train_cond(d):
+            tt = get_train_data(suffix=suffix).reset_index()
+        elif test_cond(d):
+            tt = get_test_data(suffix=suffix).reset_index()
+        else:
+            tt = get_validation_data(suffix=suffix).reset_index()
+        tt_day = tt[tt.claim_date == d]
+        deviation_from_origin = dev
+        new_origin = (origin[0], origin[1] + deviation_from_origin)
+        slope = tt_day.wind_dir.mean() / 360
+        tt_day = tt_day.merge(mapping[['gridcell', 'lon_grid', 'lat_grid', 'geometry']].drop_duplicates('gridcell'), how='left', on='gridcell').set_geometry('geometry')
+        _X = np.array(tt_day[['lon_grid', 'lat_grid']])
+        new_lats = co * slope * (_X[..., 0] - origin[0]) + new_origin[1]
+        a = np.array([new_origin])
+        new_origin_array = np.tile(a, (len(_X), 1))
+        dist_from_line = hauteur(new_origin_array, np.stack([_X[..., 0], new_lats], axis=1), _X).eval({})
+        tt_day = tt_day.assign(dist_from_line=dist_from_line) \
+            .assign(dist_term=lambda x: np.exp(-(x.dist_from_line / 80) ** 2 / 2))
+        ax1.plot(_X[..., 0], new_lats, color='red', ls='--')
+        geoplot.choropleth(tt_day[tt_day.obscnt > 0], ax=ax1, hue='obscnt', cmap='OrRd', legend=True, legend_kwargs={'label': 'count', 'shrink': 0.8})
+        geoplot.choropleth(tt_day, ax=ax2, hue='dist_from_line', cmap=matplotlib.cm.get_cmap('OrRd_r'), legend=True, legend_kwargs={'label': 'km', 'shrink': 0.8})
+        ax1.set_title(f'Observed claim count {d_str}')
+        ax2.set_title(f'Distance from line {d_str}')
+    for ax in axes.flatten():
+        ax.set_extent(spatial_extent)
+    fig.show()
+    fig.savefig(plot_path / f'examples_line.png')
+
+
+def plot_poh_meshs_winds(date):
+    date_str = date.strftime('%Y-%m-%d')
+    fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=(16, 7), constrained_layout=True, subplot_kw={'projection': cartopy.crs.PlateCarree()})
+    loc_meshs = meshs[date_str].rename("MESHS").reset_index().assign(geometry=lambda x: geopandas.GeoSeries.from_xy(x.longitude, x.latitude, crs=CRS).to_crs('epsg:4326')).set_geometry('geometry')
+    loc_poh = poh[date_str].rename('POH').reset_index().assign(geometry=lambda x: geopandas.GeoSeries.from_xy(x.longitude, x.latitude, crs=CRS).to_crs('epsg:4326')).set_geometry('geometry')
+    wd = get_train_data().wind_dir.reset_index()
+    loc_wd = wd[wd.claim_date == date].merge(mapping.drop_duplicates('gridcell')[['gridcell', 'geometry']], on='gridcell', how='left').set_geometry('geometry')
+    for ax in [ax1, ax2, ax3]:
+        df_polygon.plot(ax=ax, facecolor='oldlace', edgecolor='grey')
+        df_lakes.plot(ax=ax, facecolor='royalblue', alpha=0.5)
+        ax.add_feature(cartopy.feature.BORDERS.with_scale('10m'), color='black')
+        ax.add_feature(cartopy.feature.COASTLINE.with_scale('10m'), color='black')
+    geoplot.pointplot(loc_poh, ax=ax1, hue='POH', cmap='YlOrRd', legend=True, s=3, legend_kwargs={'label': '\%', 'shrink': 0.8})
+    geoplot.pointplot(loc_meshs, ax=ax2, hue='MESHS', cmap='YlGnBu', legend=True, s=3, legend_kwargs={'label': 'mm', 'shrink': 0.8})
+    geoplot.choropleth(loc_wd, ax=ax3, hue='wind_dir', cmap='YlGn', legend=True, legend_kwargs={'label': 'degrees', 'shrink': 0.8})
+    ax1.set_title('POH')
+    ax2.set_title('MESHS')
+    ax3.set_title('Wind direction')
+    for ax in [ax1, ax2, ax3]:
+        ax.set_extent(spatial_extent)
+    fig.suptitle(f'Hail risk variables and wind direction on the {date_str}', fontsize=20)
+    fig.show()
+    fig.savefig(plot_path / f'variables_{date_str}.png')
+
+
+def plot_exposure():
+    exp = exposure \
+        .reset_index().assign(chf_cubem=lambda x: np.where(x.volume > 0, x.value / x.volume, 0)).assign(geometry=lambda x: geopandas.GeoSeries.from_xy(x.longitude, x.latitude)).set_geometry(
+        'geometry')
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(12, 7), constrained_layout=True, subplot_kw={'projection': cartopy.crs.PlateCarree()})
+    for ax in [ax1, ax2]:
+        df_polygon.plot(ax=ax, facecolor='oldlace', edgecolor='grey')
+        df_lakes.plot(ax=ax, facecolor='royalblue', alpha=0.5)
+        ax.add_feature(cartopy.feature.BORDERS.with_scale('10m'), color='black')
+        ax.add_feature(cartopy.feature.COASTLINE.with_scale('10m'), color='black')
+    geoplot.pointplot(exp, ax=ax1, hue='value', cmap='Purples', legend=True, s=3, norm=matplotlib.colors.LogNorm(vmin=exp.value.min(),
+                                                                                                                 vmax=exp.value.max()),
+                      legend_kwargs={'label': 'CHF',
+                                     'shrink': 0.8})
+    geoplot.pointplot(exp, ax=ax2, hue='chf_cubem', cmap='Purples', norm=matplotlib.colors.LogNorm(vmin=1, vmax=exp.chf_cubem.max()),
+                      legend=True, s=3, legend_kwargs={'label': r'CHF.$m^{-3}$', 'shrink': 0.8})
+    for ax in [ax1, ax2]:
+        ax.set_extent(spatial_extent)
+    ax1.set_title('Insured value')
+    ax2.set_title('Insured value per cube meter')
+    fig.suptitle(r'Exposure for individual buildings in the canton of Z\"urich', fontsize=20)
+    fig.show()
+    fig.savefig(plot_path / f'exposure.png')
 
 
 def plot_diagnostic_logsum_claimvalues(df):
     ext_data = np.log1p(df.groupby('claim_date').claim_value.sum())
     ts, fig = threshold_selection_GoF(ext_data, min_threshold=2, max_threshold=10, plot=True)
-    fig.savefig(str(PLOT_ROOT / 'threshold_selection.png'), DPI=200)
+    fig.savefig(str(plot_path / 'threshold_selection.png'), DPI=200)
     extremogram_plot(ext_data.to_frame(name='data')
                      .assign(days_since_start=lambda x: (x.index - x.index.min()).days)
                      .assign(threshold=ts[0]), h_range=np.linspace(1, 100, 15),
-                     path_to_figure=str(PLOT_ROOT))
+                     path_to_figure=str(plot_path))
 
 
 def plot_grid(df):
@@ -81,7 +208,7 @@ def plot_grid(df):
     ax.set_ylabel(r'latitude ($^\circ$)')
     ax.set_title(r'a) Convex hull of the grid used for the modelling of spatial effects')
     fig.show()
-    fig.savefig(str(PLOT_ROOT / 'grid.png'), DPI=200)
+    fig.savefig(str(plot_path / 'grid.png'), DPI=200)
 
 
 def plot_grid_extremal_corr_space(df):
@@ -93,7 +220,7 @@ def plot_grid_extremal_corr_space(df):
     ax.set_title(r'Extremal correlation $\pi$ over a grid')
     ax.set_xlabel('distance (km)')
     ax.set_ylabel(r'$\pi$')
-    fig.savefig(str(PLOT_ROOT / 'extremal_corr_over_grid.png'), DPI=200)
+    fig.savefig(str(plot_path / 'extremal_corr_over_grid.png'), DPI=200)
 
 
 def plot_values_over_grid(df, aggfunc=lambda x: x.mean()):
@@ -116,7 +243,7 @@ def plot_values_over_grid(df, aggfunc=lambda x: x.mean()):
     count = all.dissolve(['latitude_grid', 'longitude_grid'], aggfunc=lambda x: x.count())[['geometry', 'exposure']]
     geoplot.choropleth(count, hue='exposure', cmap='Reds', legend=True, edgecolor='white', linewidth=1, ax=ax3)
     ax3.set_title('c) Count of claims over the grid')
-    fig3.savefig(str(PLOT_ROOT / 'count_claims_grid.png'), DPI=200)
+    fig3.savefig(str(plot_path / 'count_claims_grid.png'), DPI=200)
 
 
 def plot_correlation(df_hail, dim='space'):
@@ -139,7 +266,7 @@ def plot_correlation(df_hail, dim='space'):
     ax.set_title(f'{letter}) Evolution of the autocorrelation over {dim}')
     ax.set_xlabel(xlabel)
     fig.show()
-    fig.savefig(str(PLOT_ROOT / f'correlation_{dim}_summer_{column}.png'), DPI=200)
+    fig.savefig(str(plot_path / f'correlation_{dim}_summer_{column}.png'), DPI=200)
 
 
 def plot_examples(data):
@@ -191,16 +318,20 @@ def plot_examples(data):
             for ax in [ax1, ax2, ax3]:
                 ax.add_feature(cartopy.feature.BORDERS.with_scale('10m'), color='black')
                 ax.add_feature(cartopy.feature.COASTLINE.with_scale('10m'), color='black')
-                ax.set_extent([mapping.longitude.min(), mapping.longitude.max(),
-                               mapping.latitude.min(), mapping.latitude.max()])
+                ax.set_extent(spatial_extent)
             fig.suptitle(str(d)[:10], fontsize=20)
             fig.show()
-            fig.savefig(str(PLOT_ROOT / 'example_days' / f'{str(d)[:10]}.png'), DPI=200)
+            fig.savefig(str(plot_path / 'example_days' / f'{str(d)[:10]}.png'), DPI=200)
 
 
-def plot_all(df):
-    plot_average_claim_values_time(df)
-    plot_correlation(df, dim='space')
+def plot_exploratory():
+    plot_climada_compensation()
+    plot_climada_count_to_buildings_ratio()
+    plot_example_day_and_line()
+    plot_poh_meshs_winds(pd.to_datetime('2021-06-28'))
+    plot_exposure()
+    plot_average_claim_values_time(claim_values)
+    plot_correlation(claim_values, dim='space')
     im1 = cv2.imread(str(PLOT_ROOT / 'average_total_claims.png'))
     im2 = cv2.imread(str(PLOT_ROOT / f'correlation_space_summer_value.png'))
     im1 = cv2.cvtColor(im1, cv2.COLOR_BGR2RGB)
@@ -210,4 +341,4 @@ def plot_all(df):
     ax2.imshow(im2)
     ax1.axis('off')
     ax2.axis('off')
-    fig.savefig(str(PLOT_ROOT / 'figure_6.png'), dpi=200)
+    fig.savefig(str(plot_path / 'distri_claim_values.png'), dpi=200)

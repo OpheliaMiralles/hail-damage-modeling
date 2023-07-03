@@ -3,40 +3,22 @@ import pathlib
 import warnings
 from itertools import combinations
 
-import matplotlib
-
-from extreme_values_visualization import extremogram_plot
-
-matplotlib.rcParams["text.usetex"] = True
-import cartopy.crs as ccrs
 import geopandas
 import numpy as np
 import pandas as pd
+import xarray as xr
 from shapely.geometry import MultiPoint, MultiPolygon
 from shapely.geometry import Polygon
 from shapely.ops import triangulate
-import xarray as xr
-import os
+
+from constants import EXPOSURES_ROOT, HAILSTORM_ROOT_PROCESSED, HAILSTORM_ROOT_UNPROCESSED, MODELLED_ROOT, TRANSLATION_EXPOSURE_COLUMNS, TRANSLATION_HAILDATA_COLUMNS, \
+    CRS
+from extreme_values_visualization import extremogram_plot
 
 warnings.filterwarnings('ignore')
-DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
-PLOT_ROOT = pathlib.Path(os.getenv('PLOT_ROOT', ''))
+
 MESHS = xr.open_mfdataset(glob.glob('/Volumes/ExtremeSSD/hail_gvz/data/MZC/*.nc'), coords='minimal')
 POH = xr.open_mfdataset(glob.glob('/Volumes/ExtremeSSD/hail_gvz/data/BZC/*.nc'), coords='minimal')
-EXPOSURES_ROOT = pathlib.Path(DATA_ROOT / 'GVZ_Exposure_202201').with_suffix('.csv')
-HAILSTORM_ROOT_UNPROCESSED = pathlib.Path(DATA_ROOT / 'GVZ_Hail_Loss_200001_to_202203').with_suffix('.csv')
-HAILSTORM_ROOT_PROCESSED = pathlib.Path(DATA_ROOT / 'GVZ_Hail_Loss_date_corrected7').with_suffix('.csv')
-MODELLED_ROOT = pathlib.Path(DATA_ROOT / 'GVZ_imp_modelled').with_suffix('.csv')
-CRS = 'EPSG:2056'
-CCRS = ccrs.epsg(2056)
-TRANSLATION_EXPOSURE_COLUMNS = {'KoordinateNord': 'latitude', 'KoordinateOst': 'longitude', 'Versicherungssumme': 'value',
-                                'Volumen': 'volume', 'VersicherungsID': 'id', 'Baujahr': 'construction_year',
-                                'Nutzung': 'building_type', 'Nutzungscode': 'building_type_id',
-                                'Adresse': 'address'}
-TRANSLATION_HAILDATA_COLUMNS = {'KoordinateNord': 'latitude', 'KoordinateOst': 'longitude', 'Versicherungssumme': 'value',
-                                'Volumen': 'volume', 'VersicherungsID': 'id', 'Baujahr': 'construction_year',
-                                'Nutzung': 'building_type', 'Nutzungscode': 'building_type_id', 'Adresse': 'address',
-                                'Schadennummer': 'claim_id', 'Schadendatum': 'claim_date', 'Schadensumme': 'claim_value'}
 
 
 def process_exposure_data():
