@@ -93,17 +93,16 @@ def poisson_counts_model(model):
     _climadacnt = model.climada_cnt
     _obscnt = model.obs_cnt
     with model:
-        lambd0 = Uniform('constant_intensity', lower=0., upper=100, initval=_obscnt[_obscnt > 0].mean().eval({}))
-        coef_meshs_cnt = Uniform("coef_meshs_cnt", lower=-50., upper=50, initval=0)
-        coef_ws_cnt = Uniform("coef_ws_cnt", lower=-50., upper=50, initval=0)
-        sigma_dist = mc.Gamma("sigma_dist", mu=10, sigma=2, initval=90)
+        lambd0 = Uniform('constant_intensity', lower=0., upper=100)
+        coef_meshs_cnt = Uniform("coef_meshs_cnt", lower=-50., upper=50)
+        coef_ws_cnt = Uniform("coef_ws_cnt", lower=-50., upper=50)
+        sigma_dist = mc.Gamma("sigma_dist", mu=10, sigma=2)
         coef_climada = Uniform("coef_climada", lower=[-10.] * pow_climada, upper=[10] * pow_climada, initval=[0.] * pow_climada)
-        coef_cross_climada_dist = Uniform("coef_cross_climada_dist", lower=-50., upper=50, initval=0)
-        sigma = Uniform("sigma_poisson", lower=0, upper=10, initval=trace_previous.posterior.sigma_poisson.mean())
-        sigma1 = mc.Uniform("sigma1", lower=0, upper=10, initval=trace_previous.posterior.sigma1.mean())
-        ls = mc.Gamma("ls", mu=200, sigma=50, initval=trace_previous.posterior.ls.mean())
-        deviation_from_origin = mc.Uniform('deviation_from_origin', lower=[-1] * 3, upper=[1] * 3, dims='season', initval=trace_previous.posterior.deviation_from_origin.mean(['chain', 'draw']))[
-            _season]
+        coef_cross_climada_dist = Uniform("coef_cross_climada_dist", lower=-50., upper=50)
+        sigma = Uniform("sigma_poisson", lower=0, upper=10)
+        sigma1 = mc.Uniform("sigma1", lower=0, upper=10)
+        ls = mc.Gamma("ls", mu=200, sigma=50)
+        deviation_from_origin = mc.Uniform('deviation_from_origin', lower=[-1] * 3, upper=[1] * 3, dims='season')[_season]
         new_origin = (origin[0], origin[1] + deviation_from_origin)
         slope = _wind_dir
         new_lats = slope * (_X[..., 0][_grid] - origin[0]) + new_origin[1]
@@ -111,8 +110,8 @@ def poisson_counts_model(model):
         dist_from_line = hauteur(new_origin_array, at.stack([_X[..., 0][_grid], new_lats], axis=1), _X[_grid])
         dist_term = sigma_dist / (1 + dist_from_line) - 1
         latent = mc.gp.Latent(cov_func=Matern32Chordal(2, ls), )
-        eps = latent.prior("eps_scale", _X, dims="grid", jitter=1e-7, initval=trace_previous.posterior.eps_scale.mean(['draw', 'chain']))
-        seasonal = mc.Uniform('seasonal_comp', lower=[-50] * 3, upper=[50] * 3, dims='season', initval=trace_previous.posterior.seasonal_comp.mean(['chain', 'draw']))[_season]
+        eps = latent.prior("eps_scale", _X, dims="grid", jitter=1e-7)
+        seasonal = mc.Uniform('seasonal_comp', lower=[-50] * 3, upper=[50] * 3, dims='season')[_season]
         climada_vec = np.array([_climadacnt.eval({}) ** p for p in range(1, pow_climada + 1)])
         pointwise_block = lambd0 + at.math.dot(coef_climada, climada_vec) + coef_ws_cnt * _wind_speed * dist_term + coef_cross_climada_dist * _climadacnt * dist_term \
                           + coef_meshs_cnt * _meshs * dist_term + seasonal
@@ -122,9 +121,9 @@ def poisson_counts_model(model):
         logmu = at.switch(_climadacnt >= 1, climada_block, null_climada_block)
         glm_mu = logmu / scaling_factor
         # psi
-        psi0 = mc.Gamma('psi0', alpha=2, beta=2, initval=len(_obscnt[_obscnt > 0].eval({})) / len(_obscnt.eval({})))
-        c = mc.Uniform('c', -50, 50, initval=0)
-        d = mc.Uniform('d', -50, 50, initval=0)
+        psi0 = mc.Gamma('psi0', alpha=2, beta=2)
+        c = mc.Uniform('c', -50, 50)
+        d = mc.Uniform('d', -50, 50)
         glm_psi = psi0 + c * (_climadacnt >= 1).astype(int) + d * dist_term * _meshs * _poh + seasonal
         psi = sigmoid(glm_psi / scaling_factor ** 2)
         alpha = mc.Gamma('alpha', 2, 2)

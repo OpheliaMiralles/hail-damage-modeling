@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import matplotlib.pyplot as plt
@@ -9,8 +10,8 @@ from exploratory_da.utils import grid_from_geopandas_pointcloud, associate_claim
     process_exposure_data, associate_exposure_data_with_grid
 
 plt.rcParams["figure.constrained_layout.use"] = True
-DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits')
+DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
+FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
 scaling_factor = 1
 tol = 1e-5
 
@@ -68,7 +69,7 @@ def save_train_test_validation_data(data=None, method='random', freq='1d'):
         dates_mapping = [n for n, l in enumerate(dates_continuous)]
         time_mapping_df = pd.DataFrame(dates_mapping, columns=['time'], index=dates_continuous)
         set = set.merge(time_mapping_df, left_on=['claim_date'], right_index=True)
-        set = set.assign(season=lambda x: np.where((x.month >= 6) & (x.month<=8), 0, 1))
+        set = set.assign(season=lambda x: np.where((x.month >= 6) & (x.month <= 8), 0, 1))
         set.to_csv(str(DATA_ROOT / f'{name}.csv'))
 
 

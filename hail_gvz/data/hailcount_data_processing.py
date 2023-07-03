@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import geopandas
@@ -7,9 +8,8 @@ import xarray as xr
 
 from exploratory_da.utils import process_data_with_modelled_formatting, grid_from_geopandas_pointcloud, process_exposure_data
 
-DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/Ophelia')
-
-FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits/')
+DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
+FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
 scaling_factor = 1
 tol = 1e-5
 CRS = 'EPSG:2056'
@@ -21,11 +21,11 @@ def sparsify_data(suffix=None):
     root_to_counts = DATA_ROOT / suffix if suffix else DATA_ROOT
     suffix_str = f'_{suffix}' if suffix else ''
     for src, name in (
-            # (f'df_poh{suffix_str}.csv', 'poh'),
-            # (f'df_meshs{suffix_str}.csv', 'meshs'),
+             (f'df_poh{suffix_str}.csv', 'poh'),
+             (f'df_meshs{suffix_str}.csv', 'meshs'),
             (f'df_imp_modelled{suffix_str}_PAA.csv', 'climada_cnt'),
             (f'df_imp_modelled{suffix_str}.csv', 'climada_dmg'),
-            # (f'df_imp_observed{suffix_str}.csv', 'obs_cnt')
+             (f'df_imp_observed{suffix_str}.csv', 'obs_cnt')
     ):
         print(f"Reading {name}")
         r = process_data_with_modelled_formatting(root_to_counts / src)

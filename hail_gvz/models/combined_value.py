@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import aesara.tensor as at
@@ -14,16 +15,16 @@ from pymc_utils.pymc_distributions import Matern32Chordal, RatQuadChordal, sigmo
     bernoulli_distri_unobserved
 from threshold_selection import threshold_selection_GoF
 
-DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits')
+DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
+FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
 scaling_factor = 100
 tol = 1e-3
 threshold = 8.06
 exp_threshold = np.exp(threshold) - 1
 link_pot = lambda x: np.log1p(x) - threshold
 link_beta = lambda x: x / (np.exp(threshold) - 1)
-name_pot = '20230228_05:00'
-name_beta = '20230220_12:41'
+name_pot = '20230629_15:48'
+name_beta = '20230629_14:56'
 name_bern = '20230221_12:58'
 trace_beta_solo = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_values' / name_beta).with_suffix('.nc')))
 trace_gpd_solo = az.from_netcdf(str(pathlib.Path(FITS_ROOT / 'claim_values' / name_pot).with_suffix('.nc')))
@@ -66,7 +67,7 @@ def initialize_model(data):
         # covariates
         mc.ConstantData('unscaled_exposure', data.exposure, dims='point')
         mc.ConstantData('exposure', (np.log(data.exposure) - np.log(data.exposure).min()) / (
-                    np.log(data.exposure).max() - np.log(data.exposure).min()), dims='point')
+                np.log(data.exposure).max() - np.log(data.exposure).min()), dims='point')
         mc.ConstantData('meshs', data.MESHS / scaling_factor, dims='point')
         mc.ConstantData('poh', data.POH / scaling_factor, dims='point')
     return model
@@ -191,7 +192,7 @@ def build_model(data, fit=False):
 def get_chosen_variables_for_model(model, nb_draws=None):
     vars = [v.name for v in model.free_RVs]
     bern_vars = [v for v in vars if 'bern' in v or v == 'constant_alpha']
-    beta_vars = [v for v in vars[:9]]
+    beta_vars = [v for v in vars[:8]]
     pot_vars = [v for v in vars if
                 v not in bern_vars and v not in beta_vars and v in [v for v in trace_gpd_solo.posterior.variables]]
     trace_bern = trace_bern_solo.posterior[bern_vars]

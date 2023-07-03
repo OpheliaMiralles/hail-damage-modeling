@@ -1,3 +1,4 @@
+import os
 import pathlib
 from glob import glob
 
@@ -28,8 +29,8 @@ params = {'legend.fontsize': 'xx-large',
           'ytick.labelsize': 'xx-large'}
 pylab.rcParams.update(params)
 matplotlib.rcParams["text.usetex"] = True
-PLOT_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/plots/')
-DATA_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
+DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
+PLOT_ROOT = pathlib.Path(os.getenv('PLOT_ROOT', ''))
 EXPOSURES_ROOT = pathlib.Path(DATA_ROOT / 'GVZ_Exposure_202201').with_suffix('.csv')
 HAILSTORM_ROOT = pathlib.Path(DATA_ROOT / 'GVZ_Hail_Loss_200001_to_202203').with_suffix('.csv')
 CRS = 'EPSG:2056'
@@ -210,13 +211,3 @@ def plot_all(df):
     ax1.axis('off')
     ax2.axis('off')
     fig.savefig(str(PLOT_ROOT / 'figure_6.png'), dpi=200)
-
-
-if __name__ == '__main__':
-    print("Loading corrected data")
-    data = pd.read_csv(str(DATA_ROOT / 'processed.csv'), index_col=[0, 1, 2, 3], parse_dates=[3]).drop(columns=['time']).reset_index()
-    data['geometry'] = geopandas.GeoSeries.from_wkt(data['geometry'])
-    data = data.set_geometry('geometry')
-    print("Plotting")
-    PLOT_ROOT = pathlib.Path('/Users/Boubou/Documents/GitHub/hail_gvz/plots/exploratory/')
-    plot_all(data)

@@ -1,16 +1,20 @@
+import datetime
+import os
 import pathlib
 
+import arviz as az
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pymc as mc
 from pymc import Uniform
+
 from data.haildamage_data_processing import get_train_data
 from pymc_utils.pymc_distributions import beta_distri, RatQuadChordal
 
 plt.rcParams["figure.constrained_layout.use"] = True
-DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
-FITS_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/fits')
+DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
+FITS_ROOT = pathlib.Path(os.getenv('FITS_ROOT', ''))
 scaling_factor = 100
 tol = 1e-5
 threshold = 8.06
@@ -86,7 +90,8 @@ def build_beta_model(data):
         _poh = mc.ConstantData('poh', data.mean_poh / scaling_factor, dims='point')
     mu, sigma = beta_nonextreme(model, _below)
     observed = link_beta(data.pos_error.loc[_below.eval({})])
-    beta_distri(mu, sigma=sigma, value=observed)
+    with model:
+        beta_distri(mu, sigma=sigma, value=observed)
     return model
 
 
@@ -95,10 +100,6 @@ def fit_marginal_model_for_claim_values(data):
     with model:
         # fit model
         print('Fitting beta model for non extreme claims...')
-        trace = mc.sample(500, init="jitter+adapt_diag_grad", chains=1,
+        trace = mc.sample(500, tune=100, init="jitter+adapt_diag_grad", chains=2,
                           cores=1, progressbar=True)
     return trace
-
-if __name__ == '__main__':
-    d = get_train_data()
-    fit_marginal_model_for_claim_values(d)

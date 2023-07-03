@@ -16,10 +16,11 @@ from shapely.geometry import MultiPoint, MultiPolygon
 from shapely.geometry import Polygon
 from shapely.ops import triangulate
 import xarray as xr
+import os
 
 warnings.filterwarnings('ignore')
-PLOT_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/plots/')
-DATA_ROOT = pathlib.Path('/Volumes/ExtremeSSD/hail_gvz/data/GVZ_Datenlieferung_an_ETH/')
+DATA_ROOT = pathlib.Path(os.getenv('DATA_ROOT', ''))
+PLOT_ROOT = pathlib.Path(os.getenv('PLOT_ROOT', ''))
 MESHS = xr.open_mfdataset(glob.glob('/Volumes/ExtremeSSD/hail_gvz/data/MZC/*.nc'), coords='minimal')
 POH = xr.open_mfdataset(glob.glob('/Volumes/ExtremeSSD/hail_gvz/data/BZC/*.nc'), coords='minimal')
 EXPOSURES_ROOT = pathlib.Path(DATA_ROOT / 'GVZ_Exposure_202201').with_suffix('.csv')
@@ -58,7 +59,7 @@ def process_modelled_data():
 
 
 def process_data_with_modelled_formatting(root):
-    df_mod = pd.read_csv(root, sep=';', index_col=['KoordinateNord', 'KoordinateOst'], usecols=lambda x: '2' in x or x=='KoordinateNord' or x=='KoordinateOst')
+    df_mod = pd.read_csv(root, sep=';', index_col=['KoordinateNord', 'KoordinateOst'], usecols=lambda x: '2' in x or x == 'KoordinateNord' or x == 'KoordinateOst')
     print(df_mod.shape)
     df_mod = df_mod.reset_index().rename(columns={'KoordinateNord': 'latitude', 'KoordinateOst': 'longitude'})
     df_mod = df_mod.set_index(['latitude', 'longitude'])
