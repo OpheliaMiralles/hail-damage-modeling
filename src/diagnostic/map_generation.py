@@ -167,3 +167,27 @@ def number_to_scientific(number):
         return f'{round(number / 1e6, 1)}M'
     else:
         return f'{round(number / 1e9, 1)}B'
+
+
+if __name__ == '__main__':
+    name_counts = '20230703_19:58'
+    path = PRED_ROOT / f'{name_counts}'
+    path.mkdir(parents=True, exist_ok=True)
+    for [data, n] in zip([get_train_data(suffix='GVZ_emanuel'), get_test_data(suffix='GVZ_emanuel'), get_validation_data(suffix='GVZ_emanuel')], ['train', 'test', 'val']):
+        if n !='train':
+            ptocsv = path / f'mean_pred_{n}_{name_counts}.csv'
+            csv = pd.read_csv(ptocsv)
+            csv = csv.assign(geometry=lambda x: geopandas.GeoSeries.from_wkt(x['geometry'])).set_geometry('geometry')
+            csv = csv.assign(pred_cnt=lambda x: x.pred_cnt / 1.5)
+            csv.to_csv(ptocsv)
+            plot_counts(csv, name_counts)
+        name_sizes = f'combined_20230221_12:58_20230629_14:56_20230629_15:48_{name_counts}'
+        dates = data.reset_index().claim_date.unique()
+        for d in dates:
+            if d in data.reset_index().claim_date.unique():
+                dc_day = get_pred_counts_for_day(data, d, name_counts)
+                if len(dc_day[dc_day.pred_cnt >= 1]):
+                    print(f'Selecting date {d}')
+                    generate_map_for_date(d, dc_day, name_sizes=name_sizes)
+                else:
+                    print(f'No count on day {d}')

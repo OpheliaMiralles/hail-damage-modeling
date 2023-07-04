@@ -397,8 +397,9 @@ def skss_input_vs_predicted(all, name):
 def plot_errors_counts(counts, name):
     fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
     c = counts.groupby('claim_date').sum()
-    zero_counts = c[c.obscnt == 0]
-    non_zero_counts = c[c.obscnt > 0]
+    neg_nb_cnt = 0
+    zero_counts = c[c.obscnt <= neg_nb_cnt]
+    non_zero_counts = c[c.obscnt > neg_nb_cnt]
     fa_pred = len(zero_counts[zero_counts.pred_cnt >= 1])
     fa_climada = len(zero_counts[zero_counts.climada_cnt > 0])
     tp_pred = len(non_zero_counts[non_zero_counts.pred_cnt >= 1])
@@ -501,7 +502,7 @@ def plot_all(name_counts):
     lsd_input_vs_predicted(all.climadadmg,
                            all.claim_value,
                            all.mean_pred_size, name)
-    skss_input_vs_predicted(all, name)
+    #skss_input_vs_predicted(all, name)
     for data, n in zip([get_train_data(suffix=suffix), get_test_data(suffix=suffix), get_validation_data(suffix=suffix)], ['train', 'test', 'val']):
         dates = [pd.to_datetime('2004-07-08'), pd.to_datetime('2002-06-23'), pd.to_datetime('2009-05-26'), pd.to_datetime('2011-07-07'), pd.to_datetime('2021-06-21'),
                  pd.to_datetime('2021-06-28'), pd.to_datetime('2011-07-12'), pd.to_datetime('2017-08-01')]
@@ -514,3 +515,7 @@ def plot_all(name_counts):
                 else:
                     print(f'No count on day {d}')
 
+
+if __name__ == '__main__':
+    for name_counts in ['20230703_19:58']:
+        plot_all(name_counts)
