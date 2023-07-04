@@ -1,19 +1,12 @@
-import datetime
-import pathlib
-
 import aesara.tensor as at
-import arviz as az
 import geopandas
-import geoplot
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pymc as mc
 from pymc import Uniform
 from shapely.geometry import Point
 
-from constants import FITS_ROOT, PLOT_ROOT, pow_climada, origin, scaling_factor
-from data.hailcount_data_processing import get_train_data, get_grid_mapping, get_exposure
+from constants import pow_climada, origin, scaling_factor
 from pymc_utils.pymc_distributions import sigmoid, Matern32Chordal, binom_counts_alphamu
 
 
@@ -109,8 +102,8 @@ def poisson_counts_model(model):
                           + coef_meshs_cnt * _meshs * dist_term + seasonal
         climada_block = pointwise_block + eps[
             _grid] * sigma
-        # null_climada_block = pointwise_block + eps[_grid] * sigma1
-        logmu = climada_block  # at.switch(_climadacnt >= 1, climada_block, null_climada_block)
+        null_climada_block = pointwise_block + eps[_grid] * sigma1
+        logmu = at.switch(_climadacnt >= 1, climada_block, null_climada_block)
         glm_mu = logmu / scaling_factor
         # psi
         psi0 = mc.Gamma('psi0', alpha=2, beta=2)

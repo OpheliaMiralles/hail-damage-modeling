@@ -77,3 +77,5 @@ CCRS = ccrs.epsg(2056)
 name_pot = '20230629_15:48'
 name_beta = '20230629_14:56'
 name_bern = '20230221_12:58'
+name_counts = ''
+quantile_prediction_counts=0.865

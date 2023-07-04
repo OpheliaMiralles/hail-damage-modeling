@@ -404,6 +404,7 @@ def plot_errors_counts(counts, name):
     tp_pred = len(non_zero_counts[non_zero_counts.pred_cnt >= 1])
     tp_climada = len(non_zero_counts[non_zero_counts.climada_cnt > 0])
     fn_pred = len(non_zero_counts[non_zero_counts.pred_cnt == 0])
+    print(non_zero_counts[non_zero_counts.pred_cnt == 0].obscnt.quantile(np.linspace(0,1,10)))
     fn_climada = len(non_zero_counts[non_zero_counts.climada_cnt == 0])
     tn_pred = len(zero_counts[zero_counts.pred_cnt == 0])
     tn_climada = len(zero_counts[zero_counts.climada_cnt == 0])

@@ -7,7 +7,7 @@ import pandas as pd
 import pymc as mc
 import xarray as xr
 
-from constants import FITS_ROOT, PRED_ROOT, claim_values, nb_draws, confidence, train_cond, test_cond, valid_cond, suffix
+from constants import FITS_ROOT, PRED_ROOT, claim_values, nb_draws, confidence, train_cond, test_cond, valid_cond, suffix, quantile_prediction_counts
 from data.hailcount_data_processing import get_exposure, get_grid_mapping
 from exploratory_da.utils import associate_data_with_grid, grid_from_geopandas_pointcloud
 from models.combined_value import build_model, get_chosen_variables_for_model
@@ -35,11 +35,11 @@ def generate_and_save_counts_prediction(data, name_set, name_counts):
                   p.constant_data.poh,
                   p.constant_data.climada_cnt,
                   p.observed_data.counts.rename('obscnt'),
-                  p.posterior_predictive.counts.quantile(0.856, ['chain', 'draw']).drop('quantile').rename('pred_cnt'),
+                  p.posterior_predictive.counts.quantile(quantile_prediction_counts, ['chain', 'draw']).drop('quantile').rename('pred_cnt'),
                   p.posterior_predictive.counts.where(p.posterior_predictive.counts > 0).mean(['chain', 'draw']).rename(
                       'mean_pos'),
-                  p.posterior_predictive.counts.quantile(0.8, ['chain', 'draw']).drop('quantile').rename('lb_counts'),
-                  p.posterior_predictive.counts.quantile(0.9, ['chain', 'draw']).drop('quantile').rename('ub_counts'),
+                  p.posterior_predictive.counts.quantile(quantile_prediction_counts - confidence / 2, ['chain', 'draw']).drop('quantile').rename('lb_counts'),
+                  p.posterior_predictive.counts.quantile(quantile_prediction_counts + confidence / 2, ['chain', 'draw']).drop('quantile').rename('ub_counts'),
                   p.posterior_predictive.counts.mean(['chain', 'draw']).rename('mean_cnt')])
     counts_df = d.to_dataframe().assign(claim_date=lambda x: data.reset_index().claim_date.unique()[x.time_idx]) \
         .assign(gridcell=lambda x: mapping.gridcell.unique()[x.grid_idx]).merge(
