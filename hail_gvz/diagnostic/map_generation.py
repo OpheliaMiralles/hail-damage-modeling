@@ -147,7 +147,7 @@ def generate_map_from_predicted_sizes(random_date, predicted_sizes, path=None, n
     fig.colorbar(sm, ax=axes, fraction=0.6, label='per-building damage (CHF)', pad=0.02, extend='both', aspect=70)
     fig.colorbar(csm, ax=axes, fraction=0.6, label='per-cell damage (CHF)', pad=0.02, extend='both', aspect=70)
     fig.suptitle(random_date.strftime('%Y-%m-%d'), fontsize=20)
-    # fig.show()
+    fig.show()
     p = path or PLOT_ROOT / name_sizes
     path_to_plots = pathlib.Path(p / date_str, with_suffix='png')
     path_to_plots.parent.mkdir(exist_ok=True, parents=True)

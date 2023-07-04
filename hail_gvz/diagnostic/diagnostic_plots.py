@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from constants import FITS_ROOT, PRED_ROOT, PLOT_ROOT, claim_values, quants, confidence, suffix, scaling_factor, name_pot, name_beta, name_bern
+from constants import FITS_ROOT, PRED_ROOT, PLOT_ROOT, claim_values, quants, confidence, suffix, scaling_factor, name_pot, name_beta, name_bern, tol
 from data.climada_processing import process_climada_counts, process_climada_perbuilding_positive_damages
 from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_exposure, get_grid_mapping
 from diagnostic.map_generation import generate_map_for_date
@@ -186,6 +186,7 @@ def qq_total_per_location(series_predicted_damages, name):
     fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
     pred_dmg_gridcell, lb_dmg_gridcell, ub_dmg_gridcell = series_predicted_damages
     func = lambda x: x
+    quants = np.linspace(tol, 1 - 5e-3, 200)  # franchise claims + outlier
     obs = func(obs_damages.claim_value)
     pred = func(pred_dmg_gridcell)
     lb = func(lb_dmg_gridcell)

@@ -52,7 +52,7 @@ exp_threshold = np.exp(threshold) - 1
 delta = 0.015
 timestep = '1d'
 scaling_factor = 1e2
-pow_climada = 2
+pow_climada = 3
 origin = (8.36278492095831, 47.163852336888695)
 
 # prediction
