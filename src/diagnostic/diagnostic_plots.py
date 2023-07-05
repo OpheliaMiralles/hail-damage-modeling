@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from constants import FITS_ROOT, PRED_ROOT, PLOT_ROOT, claim_values, quants, confidence, suffix, scaling_factor, name_pot, name_beta, name_bern, tol
+from constants import FITS_ROOT, PRED_ROOT, PLOT_ROOT, claim_values, quants, confidence, suffix, scaling_factor, name_pot, name_beta, name_bern, name_counts, tol
 from data.climada_processing import process_climada_counts, process_climada_perbuilding_positive_damages
 from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_exposure, get_grid_mapping
 from diagnostic.map_generation import generate_map_for_date
@@ -470,7 +470,7 @@ def plot_errors_individual_counts(counts, name):
     fig.savefig(path / 'rates_individual.png', DPI=200)
 
 
-def plot_all(name_counts):
+def plot_all():
     plot_mc_diagnostics(name_pot, name_beta, name_counts)
     name_sizes = f'combined_{name_bern}_{name_beta}_{name_pot}_{name_counts}'
     name = name_sizes
@@ -510,8 +510,3 @@ def plot_all(name_counts):
                     generate_map_for_date(d, dc_day, name_sizes=name_sizes)
                 else:
                     print(f'No count on day {d}')
-
-
-if __name__ == '__main__':
-    for name_counts in ['20230703_19:58']:
-        plot_all(name_counts)
