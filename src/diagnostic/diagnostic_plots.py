@@ -481,10 +481,6 @@ def plot_all(name_counts):
     counts = counts.assign(meshs=lambda x: scaling_factor * x.meshs)
     plot_errors_counts(counts, name)
     qq_counts(counts, name)
-    if 'emanuel' not in name_counts:
-        cc = climada_counts.groupby(['gridcell', 'claim_date']).climadadmg.sum().rename('climada_cnt').reset_index()
-        counts.claim_date = pd.to_datetime(counts.claim_date)
-        counts = counts.drop(columns=['climada_cnt']).merge(cc, on=['gridcell', 'claim_date'], how='left').fillna(0.)
     plot_paa(counts, name)
     sizes_df = pd.concat([pd.read_csv(d).assign(claim_date=pd.to_datetime(d.split('/')[-1].split('.')[0])).set_index(['gridcell', 'claim_date']) for d in path_to_sizes])
     mean, lb, ub = sizes_df.mean_pred_size.rename('pred_dmg'), sizes_df.lb_pred.rename('pred_dmg_lb'), sizes_df.ub_pred.rename('pred_dmg_ub')
@@ -502,7 +498,7 @@ def plot_all(name_counts):
     lsd_input_vs_predicted(all.climadadmg,
                            all.claim_value,
                            all.mean_pred_size, name)
-    #skss_input_vs_predicted(all, name)
+    skss_input_vs_predicted(all, name)
     for data, n in zip([get_train_data(suffix=suffix), get_test_data(suffix=suffix), get_validation_data(suffix=suffix)], ['train', 'test', 'val']):
         dates = [pd.to_datetime('2004-07-08'), pd.to_datetime('2002-06-23'), pd.to_datetime('2009-05-26'), pd.to_datetime('2011-07-07'), pd.to_datetime('2021-06-21'),
                  pd.to_datetime('2021-06-28'), pd.to_datetime('2011-07-12'), pd.to_datetime('2017-08-01')]
