@@ -2,13 +2,14 @@ import pathlib
 from glob import glob
 
 import arviz as az
+import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from constants import FITS_ROOT, PRED_ROOT, PLOT_ROOT, claim_values, quants, confidence, suffix, scaling_factor, name_pot, name_beta, name_bern, name_counts, tol
+from constants import FITS_ROOT, PRED_ROOT, PLOT_ROOT, claim_values, quants, confidence, suffix, name_pot, name_beta, name_bern, name_counts, scaling_factor, tol
 from data.climada_processing import process_climada_counts, process_climada_perbuilding_positive_damages
 from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_exposure, get_grid_mapping
 from diagnostic.map_generation import generate_map_for_date
@@ -117,6 +118,7 @@ def get_paa(counts):
 
 def plot_paa(counts, name):
     obs_paa, pred_paa, lb_paa, ub_paa, climada_paa = get_paa(counts)
+    bounds = [20, 80]
     cuts = pd.DataFrame(np.array(pd.cut(obs_paa.reset_index().meshs, bins=50)), index=obs_paa.index, columns=['interval'])
     sclimada_paa = climada_paa.to_frame().merge(cuts, left_index=True, right_index=True, how='left').groupby('interval').mean()['climada_paa']
     sobs_paa = obs_paa.to_frame().replace(0, np.nan).interpolate().merge(cuts, left_index=True, right_index=True, how='left').groupby('interval').mean()['obs_paa']
@@ -124,11 +126,11 @@ def plot_paa(counts, name):
     slb_paa = lb_paa.to_frame().replace(0, np.nan).interpolate().merge(cuts, left_index=True, right_index=True, how='left').groupby('interval').mean()['lb_paa']
     sub_paa = ub_paa.to_frame().replace(0, np.nan).interpolate().merge(cuts, left_index=True, right_index=True, how='left').groupby('interval').mean()['ub_paa']
     fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
-    sobs_paa.rename('Observed').plot(ax=ax, color='salmon', legend=True)
-    sclimada_paa.rename('CLIMADA').plot(ax=ax, color='goldenrod', legend=True)
-    spred_paa.rename('Predicted mean').plot(ax=ax, color='navy', legend=True)
-    slb_paa.rename(f'{int(round(100 * (1 - confidence), 0))}\% predicted range').plot(ax=ax, color='navy', ls='--', legend=True)
-    sub_paa.plot(ax=ax, color='navy', ls='--', legend=False)
+    sobs_paa.rename('Observed').loc[bounds[0]:bounds[-1]].plot(ax=ax, color='salmon', legend=True)
+    sclimada_paa.rename('CLIMADA').loc[bounds[0]:bounds[-1]].plot(ax=ax, color='goldenrod', legend=True)
+    spred_paa.rename('Predicted mean').loc[bounds[0]:bounds[-1]].plot(ax=ax, color='navy', legend=True)
+    slb_paa.rename(f'{int(round(100 * (1 - confidence), 0))}\% predicted range').loc[bounds[0]:bounds[-1]].plot(ax=ax, color='navy', ls='--', legend=True)
+    sub_paa.loc[bounds[0]:bounds[-1]].plot(ax=ax, color='navy', ls='--', legend=False)
     ax.set_xlabel('MESHS (mm)')
     ax.set_ylabel('PAA (\%)')
     ax.set_yscale('log')
@@ -154,7 +156,7 @@ def get_series_predicted_damages(counts, sizes_df):
 
 
 def qq_total_per_gridcell(series_predicted_damages, name):
-    fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
+    fig, ax = plt.subplots(ncols=1, figsize=(8, 7), constrained_layout=True)
     pred_dmg_gridcell, lb_dmg_gridcell, ub_dmg_gridcell = series_predicted_damages
     func = lambda x: x
     obs = func(obs_dmg_gridcell.claim_value)
@@ -170,7 +172,7 @@ def qq_total_per_gridcell(series_predicted_damages, name):
     ax.plot(obs.quantile(quants), ub.quantile(quants),
             ls='--', color='navy')
     ax.plot(obs.quantile(quants), obs.quantile(quants), color='navy', label=r'$x=y$')
-    fig.suptitle(f'b) QQ plot of the hail damages (CHF) per 2km gridcell', fontsize=20)
+    fig.suptitle(f'c) QQ plot of the hail damage (CHF) per 2km gridcell', fontsize=20)
     ax.set_xlabel('observed')
     ax.set_ylabel('predicted')
     ax.legend(loc='upper left')
@@ -183,7 +185,7 @@ def qq_total_per_gridcell(series_predicted_damages, name):
 
 
 def qq_total_per_location(series_predicted_damages, name):
-    fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
+    fig, ax = plt.subplots(ncols=1, figsize=(8, 7), constrained_layout=True)
     pred_dmg_gridcell, lb_dmg_gridcell, ub_dmg_gridcell = series_predicted_damages
     func = lambda x: x
     quants = np.linspace(tol, 1 - 5e-3, 200)  # franchise claims + outlier
@@ -195,15 +197,15 @@ def qq_total_per_location(series_predicted_damages, name):
     ax.scatter(obs.quantile(quants), pred.quantile(quants), marker='x', color='navy', label='Predicted mean')
     q = lb.quantile(quants).rolling(100).mean()
     q.iloc[0] = 100
-    ax.scatter(obs.quantile(quants), climada.quantile(quants), marker='x', color='goldenrod', label='CLIMADA')
+    ax.scatter(obs.quantile(quants), climada.quantile(quants), marker='x', color='goldenrod', label='Downscaled CLIMADA')
     ax.plot(obs.quantile(quants), q.interpolate(),
             ls='--', color='navy',
             label=f'{int(round(100 * (1 - confidence), 0))}\% predicted range')
     ax.plot(obs.quantile(quants), ub.quantile(quants),
             ls='--', color='navy')
     ax.plot(obs.quantile(quants), obs.quantile(quants), color='navy', label=r'$x=y$')
-    fig.suptitle(f'a) QQ plot of the hail damages (CHF) per location', fontsize=20)
-    ax.legend(loc='upper left')
+    fig.suptitle(f'b) QQ plot of the hail damage (CHF) per location', fontsize=20)
+    ax.legend(loc='lower right')
     ax.set_xlabel('observed')
     ax.set_ylabel('predicted')
     ax.set_xscale(matplotlib.scale.FuncScaleLog(axis=0, functions=[lambda x: 1 + x, lambda x: x - 1]))
@@ -212,57 +214,6 @@ def qq_total_per_location(series_predicted_damages, name):
     path = PLOT_ROOT / name
     path.mkdir(parents=True, exist_ok=True)
     fig.savefig(path / 'qq_location.png', DPI=200)
-
-
-def qq_total_gricell_day(series_predicted_damages, name):
-    pred_dmg_gridcell, lb_dmg_gridcell, ub_dmg_gridcell = series_predicted_damages
-    fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
-    func = lambda x: x
-    aove_threshold = obs_dmg_gridcell
-    ax.scatter(func(aove_threshold.claim_value.groupby('claim_date').sum()).quantile(quants), func(pred_dmg_gridcell.groupby('claim_date').sum()).quantile(quants), marker='x', color='navy',
-               label='Predicted mean')
-    ax.scatter(func(aove_threshold.claim_value.groupby('claim_date').sum()).quantile(quants), func(climada_damages.climadadmg.groupby('claim_date').sum()).quantile(quants), marker='x',
-               color='goldenrod',
-               label='CLIMADA')
-    ax.plot(func(aove_threshold.claim_value.groupby('claim_date').sum()).quantile(quants),
-            func(lb_dmg_gridcell.groupby('claim_date').sum()).quantile(quants).rolling(10).mean(),
-            ls='--', color='navy',
-            label=f'{int(round(100 * (1 - confidence), 0))}\% predicted range')
-    ax.plot(func(aove_threshold.claim_value.groupby('claim_date').sum()).quantile(quants),
-            func(ub_dmg_gridcell.groupby('claim_date').sum()).quantile(quants).rolling(10).mean(),
-            ls='--', color='navy')
-    ax.plot(func(aove_threshold.claim_value.groupby('claim_date').sum()).quantile(quants),
-            func(aove_threshold.claim_value.groupby('claim_date').sum()).quantile(quants), color='navy', label='$x=y$')
-    ax.legend(loc='upper left')
-    ax.set_xlabel('observed')
-    ax.set_ylabel('predicted')
-    ax.set_xscale(matplotlib.scale.FuncScaleLog(axis=0, functions=[lambda x: 1 + x, lambda x: x - 1]))
-    ax.set_yscale(matplotlib.scale.FuncScaleLog(axis=1, functions=[lambda x: 1 + x, lambda x: x - 1]))
-    fig.suptitle(f'QQ plot of the total damages (CHF) over the canton per day', fontsize=14)
-    fig.show()
-    path = PLOT_ROOT / name
-    path.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path / 'qq_gridcell_day.png', DPI=200)
-
-
-def pointplot_daily_claims(sizes_df, name):
-    fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
-    g = claim_values.groupby('claim_date').claim_value.sum().to_frame() \
-        .merge(sizes_df.groupby('claim_date').mean_pred_size.sum().to_frame(), left_index=True, right_index=True, how='outer') \
-        .merge(climada_damages.groupby('claim_date').climadadmg.sum().to_frame(), left_index=True, right_index=True, how='outer')
-    g = g.fillna(0.)
-    func = lambda x: np.log1p(x)
-    ax.scatter(func(g.claim_value), func(g.mean_pred_size.rolling(2).mean()), color='navy', marker='x', label='Predicted mean')
-    ax.scatter(func(g.claim_value), func(g.climadadmg), color='goldenrod', marker='x', label='CLIMADA')
-    ax.plot(func(g.claim_value), func(g.claim_value), color='navy', label='$x=y$')
-    ax.set_xlabel('observed')
-    ax.set_ylabel('predicted')
-    fig.suptitle(f'Point plot of the total log-damages (CHF) over the canton per day', fontsize=20)
-    fig.show()
-    path = PLOT_ROOT / name
-    path.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path / 'pointplot_gridcell_day.png', DPI=200)
-
 
 def qq_counts(counts, name):
     fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
@@ -330,30 +281,6 @@ def plot_mdr(series_predicted_damages_with_meshs, name):
     fig.savefig(path / 'mdr.png', DPI=200)
 
 
-def plot_pct_above_threshold(series_predicted_damages, name):
-    fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
-    log_pow = np.linspace(2, 15, 100)
-    mean, lb, ub = series_predicted_damages
-    ax.scatter([np.exp(t) - 1 for t in log_pow], [len(mean[np.log1p(mean) > t]) / len(mean) for t in log_pow], marker='x', color='navy',
-               label='Predicted mean')
-    ax.scatter([np.exp(t) - 1 for t in log_pow], [len(obs_damages[np.log1p(obs_damages.claim_value) > t]) / len(obs_damages) for t in log_pow],
-               marker='x', color='salmon', label='Observed')
-    ax.scatter([np.exp(t) - 1 for t in log_pow], [len(climada_damages[np.log1p(climada_damages.climadadmg) > t]) / len(climada_damages) for t in log_pow], marker='x',
-               color='goldenrod', label='CLIMADA')
-    ax.plot([np.exp(t) - 1 for t in log_pow], [len(lb[np.log1p(lb) > t].rolling(50).mean()) / len(lb) for t in log_pow],
-            ls='--', color='navy', label=f'{int(round(100 * (1 - confidence), 0))}\% predicted range')
-    ax.plot([np.exp(t) - 1 for t in log_pow], [len(ub[np.log1p(ub) > t]) / len(ub) for t in log_pow], ls='--', color='navy')
-    ax.set_xscale(matplotlib.scale.FuncScaleLog(axis=0, functions=[lambda x: 1 + x, lambda x: x - 1]))
-    ax.legend()
-    ax.set_xlabel('threshold')
-    ax.set_ylabel('proportion of claim values above threshold')
-    fig.suptitle('Proportion of claims above a given threshold for a single building', fontsize=14)
-    fig.show()
-    path = PLOT_ROOT / name
-    path.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path / 'pct_above_thresh.png', DPI=200)
-
-
 def lsd_input_vs_predicted(inputs, targets, predicted, name):
     metric = log_spectral_distance_from_xarray
     fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
@@ -372,6 +299,7 @@ def lsd_input_vs_predicted(inputs, targets, predicted, name):
     path = PLOT_ROOT / name
     path.mkdir(parents=True, exist_ok=True)
     fig.savefig(path / 'lsd.png', DPI=200)
+    return clipped_df
 
 
 def skss_input_vs_predicted(all, name):
@@ -392,6 +320,7 @@ def skss_input_vs_predicted(all, name):
     path = PLOT_ROOT / name
     path.mkdir(parents=True, exist_ok=True)
     fig.savefig(path / 'skss.png', DPI=200)
+    return m_in, m_pred
 
 
 def plot_errors_counts(counts, name):
@@ -405,7 +334,7 @@ def plot_errors_counts(counts, name):
     tp_pred = len(non_zero_counts[non_zero_counts.pred_cnt >= 1])
     tp_climada = len(non_zero_counts[non_zero_counts.climada_cnt > 0])
     fn_pred = len(non_zero_counts[non_zero_counts.pred_cnt == 0])
-    print(non_zero_counts[non_zero_counts.pred_cnt == 0].obscnt.quantile(np.linspace(0,1,10)))
+    print(non_zero_counts[non_zero_counts.pred_cnt == 0].obscnt.quantile(np.linspace(0, 1, 10)))
     fn_climada = len(non_zero_counts[non_zero_counts.climada_cnt == 0])
     tn_pred = len(zero_counts[zero_counts.pred_cnt == 0])
     tn_climada = len(zero_counts[zero_counts.climada_cnt == 0])
@@ -426,53 +355,16 @@ def plot_errors_counts(counts, name):
     print(df)
     (100 * df).plot.bar(ax=ax, color=['navy', 'goldenrod'])
     ax.set_ylabel('rate (\%)')
-    fig.suptitle('Count of claims per day', fontsize=14)
+    fig.suptitle('Count of claims per day', fontsize=20)
     fig.show()
     path = PLOT_ROOT / name
     path.mkdir(parents=True, exist_ok=True)
     fig.savefig(path / 'rates.png', DPI=200)
 
 
-def plot_errors_individual_counts(counts, name):
-    fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
-    c = counts
-    zero_counts = c[c.obscnt == 0]
-    non_zero_counts = c[c.obscnt > 0]
-    fa_pred = len(zero_counts[zero_counts.pred_cnt >= 1])
-    fa_climada = len(zero_counts[zero_counts.climada_cnt > 0])
-    tp_pred = len(non_zero_counts[non_zero_counts.pred_cnt >= 1])
-    tp_climada = len(non_zero_counts[non_zero_counts.climada_cnt > 0])
-    fn_pred = len(non_zero_counts[non_zero_counts.pred_cnt == 0])
-    fn_climada = len(non_zero_counts[non_zero_counts.climada_cnt == 0])
-    tn_pred = len(zero_counts[zero_counts.pred_cnt == 0])
-    tn_climada = len(zero_counts[zero_counts.climada_cnt == 0])
-    fa_rate_pred = fa_pred / (fa_pred + tn_pred)
-    sensitivity_pred = tp_pred / (tp_pred + fn_pred)
-    specificity_pred = tn_pred / (fa_pred + tn_pred)
-    pos_pred_value_pred = tp_pred / (tp_pred + fa_pred)
-    fa_rate_clim = fa_climada / (fa_climada + tn_climada)
-    sensitivity_clim = tp_climada / (tp_climada + fn_climada)
-    specificity_clim = tn_climada / (fa_climada + tn_climada)
-    pos_pred_value_clim = tp_climada / (tp_climada + fa_climada)
-    df = pd.DataFrame([[fa_rate_pred, fa_rate_clim, (fa_rate_pred - fa_rate_clim) / fa_rate_clim],
-                       [sensitivity_pred, sensitivity_clim, (sensitivity_pred - sensitivity_clim) / sensitivity_clim],
-                       [specificity_pred, specificity_clim, (specificity_pred - specificity_clim)],
-                       [pos_pred_value_pred, pos_pred_value_clim, (pos_pred_value_pred - pos_pred_value_clim) / pos_pred_value_clim]],
-                      index=['False Alarm', 'Sensitivity', 'Specificity', 'Positive Predictive Value'],
-                      columns=['Predicted mean', 'CLIMADA', 'Variation'])
-    print(df)
-    (100 * df).plot.bar(ax=ax, color=['navy', 'goldenrod'])
-    ax.set_ylabel('rate (\%)')
-    fig.suptitle('Count of claims per gridcell per day', fontsize=14)
-    fig.show()
-    path = PLOT_ROOT / name
-    path.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path / 'rates_individual.png', DPI=200)
-
-
 def plot_all():
-    plot_mc_diagnostics(name_pot, name_beta, name_counts)
     name_sizes = f'combined_{name_bern}_{name_beta}_{name_pot}_{name_counts}'
+    plot_mc_diagnostics(name_pot, name_beta, name_counts)
     name = name_sizes
     path_to_counts = glob(str(pathlib.Path(PRED_ROOT / name_counts / '*').with_suffix('.csv')))
     path_to_sizes = glob(str(pathlib.Path(PRED_ROOT / name_sizes / '*').with_suffix('.csv')))
@@ -484,8 +376,8 @@ def plot_all():
     plot_paa(counts, name)
     sizes_df = pd.concat([pd.read_csv(d).assign(claim_date=pd.to_datetime(d.split('/')[-1].split('.')[0])).set_index(['gridcell', 'claim_date']) for d in path_to_sizes])
     mean, lb, ub = sizes_df.mean_pred_size.rename('pred_dmg'), sizes_df.lb_pred.rename('pred_dmg_lb'), sizes_df.ub_pred.rename('pred_dmg_ub')
-    qq_total_per_gridcell([mean, lb, ub], name)
-    qq_total_per_location([mean, lb, ub], name)
+    qq_total_per_gridcell([mean, lb, ub], name_sizes)
+    qq_total_per_location([mean, lb, ub], name_sizes)
     climada_xarray = climada_damages.reset_index().groupby(['gridcell', 'claim_date'], as_index=False).climadadmg.sum() \
         .merge(mapping.drop_duplicates('gridcell')[['gridcell', 'lat_grid', 'lon_grid']], on='gridcell', how='left') \
         .set_index(['claim_date', 'lon_grid', 'lat_grid']).climadadmg.to_xarray().fillna(0.)
@@ -495,13 +387,46 @@ def plot_all():
     obs_xarray = claim_values.drop(columns=['gridcell']).merge(mapping, on=['latitude', 'longitude'], how='left') \
         .groupby(['claim_date', 'lon_grid', 'lat_grid']).claim_value.sum().to_xarray().fillna(0.)
     all = xr.merge([climada_xarray, pred_xarray, obs_xarray]).fillna(0.)
-    lsd_input_vs_predicted(all.climadadmg,
-                           all.claim_value,
-                           all.mean_pred_size, name)
-    skss_input_vs_predicted(all, name)
+    lsd_df = lsd_input_vs_predicted(all.climadadmg,
+                                    all.claim_value,
+                                    all.mean_pred_size, name_sizes)
+    skss_in, skss_pred = skss_input_vs_predicted(all, name_sizes)
+    scaled_lsd = ((-lsd_df.CLIMADA + lsd_df.predicted) / lsd_df.CLIMADA).rename('LSD')
+    scaled_skss = pd.Series(((-skss_in + skss_pred) / skss_in).numpy().flatten()).replace(np.inf, np.nan).dropna().rename('SKSS')
+    fig, ax = plt.subplots(ncols=1, figsize=(8, 7), constrained_layout=True)
+    props = dict(widths=0.7, patch_artist=True, medianprops=dict(color="lightgrey"))
+    bp1 = ax.boxplot(scaled_skss.dropna(), labels=['SKSS'], positions=[0], **props)
+    ax2 = ax.twinx()
+    bp2 = ax2.boxplot(scaled_lsd, labels=['LSD'], positions=[1], **props)
+    colors = ['navy', 'indianred']
+    for bplot, axx, color in zip((bp1, bp2), [ax, ax2], colors):
+        for patch in bplot['boxes']:
+            patch.set_facecolor(color)
+            axx.tick_params(axis='y', colors=color)
+    ax.set_xlabel('metric')
+    ax.set_ylabel('variation from CLIMADA')
+    fig.show()
+    fig.suptitle(f'a) Scaled variation of metric values', fontsize=20)
+    path = PLOT_ROOT / name_sizes
+    path.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path / 'metric_values.png', DPI=200)
+    im1 = cv2.imread(str(PLOT_ROOT / name_sizes / 'metric_values.png'))
+    im2 = cv2.imread(str(PLOT_ROOT / name_sizes / f'qq_location.png'))
+    im3 = cv2.imread(str(PLOT_ROOT / name_sizes / f'qq_gridcell.png'))
+    im1 = cv2.cvtColor(im1, cv2.COLOR_BGR2RGB)
+    im2 = cv2.cvtColor(im2, cv2.COLOR_BGR2RGB)
+    im3 = cv2.cvtColor(im3, cv2.COLOR_BGR2RGB)
+    fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, constrained_layout=True, figsize=(20, 6))
+    ax1.imshow(im1)
+    ax2.imshow(im2)
+    ax3.imshow(im3)
+    ax1.axis('off')
+    ax2.axis('off')
+    ax3.axis('off')
+    fig.show()
+    fig.savefig(str(PLOT_ROOT / name_sizes / 'metrics_qq_claim_values.png'), dpi=200)
     for data, n in zip([get_train_data(suffix=suffix), get_test_data(suffix=suffix), get_validation_data(suffix=suffix)], ['train', 'test', 'val']):
-        dates = [pd.to_datetime('2004-07-08'), pd.to_datetime('2002-06-23'), pd.to_datetime('2009-05-26'), pd.to_datetime('2011-07-07'), pd.to_datetime('2021-06-21'),
-                 pd.to_datetime('2021-06-28'), pd.to_datetime('2011-07-12'), pd.to_datetime('2017-08-01')]
+        dates = [pd.to_datetime('2004-07-08'), pd.to_datetime('2012-06-30'), pd.to_datetime('2021-06-28')]
         for d in dates:
             if d in data.reset_index().claim_date.unique():
                 dc_day = get_pred_counts_for_day(data, d, name_counts)

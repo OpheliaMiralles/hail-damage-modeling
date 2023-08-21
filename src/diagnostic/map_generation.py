@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from constants import PLOT_ROOT, DATA_ROOT, PRED_ROOT, claim_values, CRS, confidence, nb_draws, df_polygon, df_lakes, suffix
-from data.hailcount_data_processing import get_grid_mapping
+from constants import PLOT_ROOT, DATA_ROOT, PRED_ROOT, claim_values, CRS, confidence, nb_draws, df_polygon, df_lakes, suffix, name_counts
+from data.hailcount_data_processing import get_grid_mapping, get_train_data, get_test_data, get_validation_data
 from diagnostic.prediction import generate_prediction_for_date
 
 mapping = get_grid_mapping(suffix=suffix)
@@ -55,7 +55,8 @@ def plot_counts(counts_csv, name_counts):
                 nb = 0.0
             ax2.set_title(f'CLIMADA: {round(nb, 1)} claims')
             geoplot.choropleth(pospred, hue='pred_cnt', cmap=cmap, norm=norm, legend=False, ax=ax3)
-            ax3.set_title(f'Predicted: {round(pospred.pred_cnt.sum(), 1)} claims')
+            ax3.set_title(f'Predicted: {round(pospred.pred_cnt.sum(), 1)} / {int(100 * (1 - confidence))}\%CI[{round(pospred["lb_counts"].sum(),1)},'
+        f' {round(pospred["ub_counts"].sum(),1)}] claims')
             fig.colorbar(sm, ax=axes, shrink=0.7, pad=0.02, extend='both')
             for ax in axes:
                 df_polygon.plot(ax=ax, facecolor='oldlace', edgecolor='grey')
@@ -134,15 +135,15 @@ def generate_map_from_predicted_sizes(random_date, predicted_sizes, path=None, n
     geoplot.pointplot(obs_pos, hue='claim_value', norm=norm, cmap=cmap, legend=False, ax=ax1, s=2)
     if random_date.strftime('%Y-%m-%d') in climada_damages.columns:
         geoplot.choropleth(climada_pred_pos, hue='climadadmg', norm=cnorm, cmap=ccmap, legend=False, ax=ax2)
-        ax2.set_title(f'CLIMADA predicted damages: CHF{number_to_scientific(climada_pred_pos["climadadmg"].sum())}', fontsize=18)
+        ax2.set_title(f'CLIMADA predicted damage: CHF{number_to_scientific(climada_pred_pos["climadadmg"].sum())}', fontsize=18)
     else:
-        ax2.set_title(f'CLIMADA predicted damages: CHF0', fontsize=18)
+        ax2.set_title(f'CLIMADA predicted damage: CHF0', fontsize=18)
     geoplot.pointplot(pred_pos, hue='mean_pred_size', cmap=cmap, norm=norm, legend=False, ax=ax3, s=3)
     for ax in [ax1, ax2, ax3]:
         ax.set_extent(spatial_extent)
-    ax1.set_title(f'Observed damages: CHF{number_to_scientific(obs_pos["claim_value"].sum())}', fontsize=18)
+    ax1.set_title(f'Observed damage: CHF{number_to_scientific(obs_pos["claim_value"].sum())}', fontsize=18)
     ax3.set_title(
-        f'Predicted damages: CHF{number_to_scientific(pred_pos["mean_pred_size"].sum())} / {int(100 * (1 - confidence))}\%CI[{number_to_scientific(pred_pos["lb_pred"].sum())},'
+        f'Predicted damage: CHF{number_to_scientific(pred_pos["mean_pred_size"].sum())} / {int(100 * (1 - confidence))}\%CI[{number_to_scientific(pred_pos["lb_pred"].sum())},'
         f' {number_to_scientific(pred_pos["ub_pred"].sum())}]', fontsize=18)
     fig.colorbar(sm, ax=axes, fraction=0.6, label='per-building damage (CHF)', pad=0.02, extend='both', aspect=70)
     fig.colorbar(csm, ax=axes, fraction=0.6, label='per-cell damage (CHF)', pad=0.02, extend='both', aspect=70)

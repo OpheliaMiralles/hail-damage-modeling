@@ -14,7 +14,7 @@ def log_spectral_distance_from_xarray(real_output, fake_output):
 
 
 def ks_stat_on_patch(patch1, patch2):
-    points = np.linspace(-30., 30., 100)
+    points = np.linspace(0., 16., 100)
     emp1 = tfp.distributions.Empirical(patch1)
     emp2 = tfp.distributions.Empirical(patch2)
     ks_stat = tf.reduce_max([tf.abs(emp1.cdf(p) - emp2.cdf(p)) for p in points], axis=0)
@@ -41,5 +41,5 @@ def spatially_convolved_ks_stat(real_output, fake_output, patch_size=3):
             ks_stat_for_time_step = ks_stat_on_patch(patch1, patch2)
             to_concat.append(ks_stat_for_time_step)
             i+=1
-    mean_ks_stat_img = tf.reduce_mean(to_concat, axis=(0, 1))
+    mean_ks_stat_img = tf.reduce_sum(to_concat, axis=(0, 1))
     return mean_ks_stat_img

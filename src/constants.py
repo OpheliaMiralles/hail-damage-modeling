@@ -33,6 +33,9 @@ TRANSLATION_HAILDATA_COLUMNS = {'KoordinateNord': 'latitude', 'KoordinateOst': '
 claim_values = pd.read_csv(str(DATA_ROOT / 'processed.csv'), index_col=[0, 1, 2, 3], parse_dates=[3]).drop(columns=['time']).reset_index()
 claim_values['geometry'] = geopandas.GeoSeries.from_wkt(claim_values['geometry'])
 claim_values = claim_values.set_geometry('geometry')
+unprocessed_claim_values = pd.read_csv(str(DATA_ROOT / 'unprocessed.csv'), index_col=[1, 2, 3], parse_dates=[3]).reset_index()
+unprocessed_claim_values['geometry'] = geopandas.GeoSeries.from_wkt(unprocessed_claim_values['geometry'])
+unprocessed_claim_values = unprocessed_claim_values.set_geometry('geometry')
 geom_roots = glob(str(DATA_ROOT / 'SHAPEFILE/swissTLMRegio_Boundaries_LV95/swissTLMRegio_KANTONSGEBIET_LV95.shp'))
 df_polygon = pd.concat([geopandas.read_file(geom_root) for geom_root in geom_roots]).to_crs(epsg='4326')
 df_polygon = df_polygon[df_polygon.NAME == 'Zürich']
@@ -56,16 +59,16 @@ pow_climada = 3
 origin = (8.36278492095831, 47.163852336888695)
 
 # prediction
-nb_draws = 10
+nb_draws = 100
 # confidence range
-confidence = 1e-1
+confidence = 5e-2
 
 # plotting utilities
 plt.rcParams["figure.constrained_layout.use"] = True
 matplotlib.rcParams["text.usetex"] = True
-params = {'legend.fontsize': 'x-large',
+params = {'legend.fontsize': 'xx-large',
           'axes.facecolor': '#eeeeee',
-          'axes.labelsize': 'xx-large', 'axes.titlesize': 20, 'xtick.labelsize': 'x-large',
+          'axes.labelsize': 18, 'axes.titlesize': 20, 'xtick.labelsize': 'x-large',
           'ytick.labelsize': 'x-large'}
 pylab.rcParams.update(params)
 tol = 5e-2
@@ -77,5 +80,5 @@ CCRS = ccrs.epsg(2056)
 name_pot = '20230629_15:48'
 name_beta = '20230629_14:56'
 name_bern = '20230221_12:58'
-name_counts = '20230701_12:59'
-quantile_prediction_counts=0.865
+name_counts = '20230328_19:45'
+quantile_prediction_counts = 0.858

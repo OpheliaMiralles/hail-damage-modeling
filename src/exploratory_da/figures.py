@@ -11,13 +11,13 @@ import pandas as pd
 import seaborn as sns
 import xarray as xr
 
-from constants import DATA_ROOT, PLOT_ROOT, claim_values, df_polygon, df_lakes, CRS, suffix
+from constants import DATA_ROOT, PLOT_ROOT, claim_values, unprocessed_claim_values, df_polygon, df_lakes, CRS, suffix
 from data.climada_processing import process_climada_perbuilding_positive_damages
 from data.hailcount_data_processing import get_train_data, get_test_data, get_validation_data, get_exposure, get_grid_mapping
 from extreme_values_visualization import extremogram_plot
 from models.counts import hauteur
 from threshold_selection import threshold_selection_GoF
-from utils import grid_from_geopandas_pointcloud, aggregate_claim_data, compute_extremal_correlation_over_grid, get_extremal_corr, get_spearman_corr
+from exploratory_da.utils import grid_from_geopandas_pointcloud, aggregate_claim_data, compute_extremal_correlation_over_grid, get_extremal_corr, get_spearman_corr
 
 plot_path = PLOT_ROOT / 'exploratory'
 exposure = get_exposure()
@@ -35,13 +35,18 @@ spatial_extent = [mapping.longitude.min() - 0.01, mapping.longitude.max() + 0.01
 def plot_average_claim_values_time(df):
     gdf = df.reset_index().assign(month=lambda x: x.claim_date.dt.month) \
         .assign(month_name=lambda x: x.claim_date.dt.strftime('%B')).assign(year=lambda x: x.claim_date.dt.year)
-    data_boxplot = gdf[['claim_value', 'claim_date', 'month_name', 'latitude', 'longitude', 'month']].set_index(['claim_date', 'latitude', 'longitude', 'month_name', 'month'])
-    fig, ax = plt.subplots(ncols=1, figsize=(8, 7), constrained_layout=True)
-    sns.boxenplot(data_boxplot.reset_index().sort_values('month'), x='month_name', y='claim_value', ax=ax)
+    data_boxplot = gdf[['claim_value', 'claim_date', 'month_name', 'latitude', 'longitude', 'month']]
+    nb_obs_month = data_boxplot.groupby('month').count().claim_value
+    data_boxplot = data_boxplot.assign(nb_obs = lambda x: x.month)
+    data_boxplot.nb_obs = data_boxplot.nb_obs.apply(lambda x: nb_obs_month.loc[x])
+    data_boxplot = data_boxplot.assign(month_name_obs = lambda x: x.month_name +'\n('+ x.nb_obs.astype(str)+')')
+    data_boxplot = data_boxplot.set_index(['claim_date', 'latitude', 'longitude', 'month_name_obs', 'month'])
+    fig, ax = plt.subplots(ncols=1, figsize=(11, 6), constrained_layout=True)
+    sns.boxenplot(data_boxplot.reset_index().sort_values('month'), x='month_name_obs', y='claim_value', ax=ax, color='slategrey')
     ax.set_ylabel('CHF')
     ax.set_xlabel('')
     ax.set_yscale('log')
-    ax.set_title('a) Hail-related damages distribution per month')
+    ax.set_title('a) Hail-related damage distribution per month')
     fig.show()
     fig.savefig(str(plot_path / 'average_total_claims.png'), DPI=200)
 
@@ -84,9 +89,9 @@ def plot_climada_compensation():
         ax.set_ylabel('predicted')
         ax.set_yscale(matplotlib.scale.FuncScaleLog(axis=1, functions=[lambda x: 1 + x, lambda x: x - 1]))
         ax.set_xscale(matplotlib.scale.FuncScaleLog(axis=0, functions=[lambda x: 1 + x, lambda x: x - 1]))
-    ax1.set_title('a) Number of buildings with positive damages per 2km gridcell per day')
+    ax1.set_title('a) Number of buildings with positive damage per 2km gridcell per day')
     ax2.set_title('b) Claim value for single buildings per day')
-    ax3.set_title('c) Total damages (CHF) over the canton per day')
+    ax3.set_title('c) Total damage (CHF) over the canton per day')
     fig.suptitle('Compensation mechanism for the per-building CLIMADA damage prediction', fontsize=20)
     fig.show()
     fig.savefig(plot_path / 'compensation_climada.png', DPI=200)
@@ -256,7 +261,7 @@ def plot_correlation(df_hail, dim='space'):
     column = 'value'
     spearman = get_spearman_corr(agg, dim, column)
     extremal = get_extremal_corr(agg, dim, column)
-    fig, ax = plt.subplots(ncols=1, figsize=(8, 7), constrained_layout=True)
+    fig, ax = plt.subplots(ncols=1, figsize=(10, 6), constrained_layout=True)
     spearman['corr'].rolling(3).mean().loc[:80].plot(marker='x', x='h', color='slategrey', ax=ax, label=r'Spearman coefficient $\rho$')
     ax.fill_between(spearman.loc[:80].index, spearman.q05.rolling(3).mean().loc[:80], spearman.q95.rolling(3).mean().loc[:80], color='slategrey', alpha=0.3)
     xlabel = 'lag (days)' if dim == 'time' else 'distance (km)'
@@ -308,8 +313,8 @@ def plot_examples(data):
             cmap = sm.cmap
             geoplot.pointplot(df, norm=norm, cmap=cmap, hue='climada_dmg', ax=ax2)
             geoplot.pointplot(df, norm=norm, cmap=cmap, hue='claim_value', ax=ax3, legend=True, legend_kwargs={'shrink': 0.7})
-            ax2.set_title('CLIMADA predicted damages (CHF)', fontsize=16)
-            ax3.set_title('Observed damages (CHF)', fontsize=16)
+            ax2.set_title('CLIMADA predicted damage (CHF)', fontsize=16)
+            ax3.set_title('Observed damage (CHF)', fontsize=16)
             ax1.set_title('Wind direction', fontsize=16)
             era5_date = xr.open_mfdataset(p)
             df_polygon.plot(ax=ax3, facecolor='goldenrod', edgecolor='grey', alpha=0.2)
@@ -325,18 +330,17 @@ def plot_examples(data):
 
 
 def plot_exploratory():
+    plot_average_claim_values_time(unprocessed_claim_values)
+    plot_correlation(claim_values, dim='space')
     plot_climada_compensation()
-    plot_climada_count_to_buildings_ratio()
     plot_example_day_and_line()
     plot_poh_meshs_winds(pd.to_datetime('2021-06-28'))
     plot_exposure()
-    plot_average_claim_values_time(claim_values)
-    plot_correlation(claim_values, dim='space')
-    im1 = cv2.imread(str(PLOT_ROOT / 'average_total_claims.png'))
-    im2 = cv2.imread(str(PLOT_ROOT / f'correlation_space_summer_value.png'))
+    im1 = cv2.imread(str(plot_path / 'average_total_claims.png'))
+    im2 = cv2.imread(str(plot_path / f'correlation_space_summer_value.png'))
     im1 = cv2.cvtColor(im1, cv2.COLOR_BGR2RGB)
     im2 = cv2.cvtColor(im2, cv2.COLOR_BGR2RGB)
-    fig, (ax1, ax2) = plt.subplots(ncols=2, constrained_layout=True, figsize=(16, 7))
+    fig, (ax1, ax2) = plt.subplots(ncols=2, constrained_layout=True, figsize=(21, 6))
     ax1.imshow(im1)
     ax2.imshow(im2)
     ax1.axis('off')

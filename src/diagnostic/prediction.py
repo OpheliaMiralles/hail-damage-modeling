@@ -7,8 +7,8 @@ import pandas as pd
 import pymc as mc
 import xarray as xr
 
-from constants import FITS_ROOT, PRED_ROOT, claim_values, nb_draws, confidence, train_cond, test_cond, valid_cond, suffix, quantile_prediction_counts
-from data.hailcount_data_processing import get_exposure, get_grid_mapping
+from constants import FITS_ROOT, PRED_ROOT, claim_values, nb_draws, confidence, train_cond, test_cond, valid_cond, suffix, quantile_prediction_counts, name_counts
+from data.hailcount_data_processing import get_exposure, get_grid_mapping, get_train_data, get_test_data, get_validation_data
 from exploratory_da.utils import associate_data_with_grid, grid_from_geopandas_pointcloud
 from models.combined_value import build_model, get_chosen_variables_for_model
 from models.counts import build_poisson_model
@@ -36,8 +36,6 @@ def generate_and_save_counts_prediction(data, name_set, name_counts):
                   p.constant_data.climada_cnt,
                   p.observed_data.counts.rename('obscnt'),
                   p.posterior_predictive.counts.quantile(quantile_prediction_counts, ['chain', 'draw']).drop('quantile').rename('pred_cnt'),
-                  p.posterior_predictive.counts.where(p.posterior_predictive.counts > 0).mean(['chain', 'draw']).rename(
-                      'mean_pos'),
                   p.posterior_predictive.counts.quantile(quantile_prediction_counts - confidence / 2, ['chain', 'draw']).drop('quantile').rename('lb_counts'),
                   p.posterior_predictive.counts.quantile(quantile_prediction_counts + confidence / 2, ['chain', 'draw']).drop('quantile').rename('ub_counts'),
                   p.posterior_predictive.counts.mean(['chain', 'draw']).rename('mean_cnt')])
